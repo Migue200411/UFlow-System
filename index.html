@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UFLOW SYSTEM — CONTROL ROOM</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Inter', 'sans-serif'],
+              mono: ['JetBrains Mono', 'monospace'],
+            },
+            colors: {
+              brand: {
+                50: '#F5F3FF',
+                100: '#EBE9FF',
+                200: '#D9D4FF',
+                300: '#C0B5FF',
+                400: '#A18FFF',
+                500: '#7C5CFF', // Electric Purple (Primary)
+                600: '#6541EB',
+                700: '#522EC9',
+                800: '#4224A3',
+                900: '#361E85',
+                950: '#1E0E4F',
+              },
+              dark: {
+                bg: '#0B0B12', // Deep Void
+                surface: '#151520', // Soft Void
+                border: 'rgba(255, 255, 255, 0.08)',
+                glass: 'rgba(20, 20, 30, 0.6)',
+              },
+              light: {
+                bg: '#EFEDE8', // Warm Stone / Premium Grey
+                surface: '#FFFFFF',
+                border: 'rgba(0, 0, 0, 0.06)',
+                glass: 'rgba(255, 255, 255, 0.85)',
+              }
+            },
+            boxShadow: {
+              'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.3)',
+              'glass-sm': '0 4px 16px 0 rgba(0, 0, 0, 0.1)',
+              'premium': '0 10px 40px -10px rgba(0, 0, 0, 0.08)',
+              'neon': '0 0 25px -5px rgba(124, 92, 255, 0.5)',
+              'neon-sm': '0 0 15px -2px rgba(124, 92, 255, 0.4)',
+            },
+            animation: {
+              'float': 'float 6s ease-in-out infinite',
+              'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            },
+            keyframes: {
+              float: {
+                '0%, 100%': { transform: 'translateY(0)' },
+                '50%': { transform: 'translateY(-10px)' },
+              }
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      /* Base & Scrollbar */
+      body {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgba(120, 120, 130, 0.2);
+        border-radius: 10px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgba(120, 120, 130, 0.4);
+      }
+
+      /* Glassmorphism Utilities - Premium Contrast Logic */
+      .glass-panel {
+        /* Light Mode Default: Opaque & Floating */
+        background: rgba(255, 255, 255, 0.80);
+        backdrop-filter: blur(24px);
+        -webkit-backdrop-filter: blur(24px);
+        border: 1px solid rgba(255, 255, 255, 0.6);
+        box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.06);
+      }
+      .dark .glass-panel {
+        /* Dark Mode: Deep & Translucent */
+        background: rgba(20, 20, 30, 0.5);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.3);
+      }
+
+      /* Animated Background Mesh (Pseudo) */
+      .ambient-glow {
+        position: fixed;
+        width: 600px;
+        height: 600px;
+        background: radial-gradient(circle, rgba(124,92,255,0.06) 0%, rgba(0,0,0,0) 70%);
+        border-radius: 50%;
+        pointer-events: none;
+        z-index: 0;
+        top: -200px;
+        left: -100px;
+        opacity: 0.6;
+      }
+      .dark .ambient-glow {
+        background: radial-gradient(circle, rgba(124,92,255,0.12) 0%, rgba(0,0,0,0) 70%);
+        opacity: 1;
+      }
+
+      .privacy-blur {
+        filter: blur(8px);
+        transition: filter 0.3s ease;
+        user-select: none;
+      }
+      .privacy-blur:hover {
+        filter: blur(0px);
+      }
+      
+      .safe-text {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        min-width: 0;
+      }
+    </style>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://esm.sh/react@^19.2.3",
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "recharts": "https://esm.sh/recharts@^3.6.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "firebase/": "https://esm.sh/firebase@^12.7.0/"
+  }
+}
+</script>
+</head>
+  <body class="bg-light-bg dark:bg-dark-bg text-zinc-800 dark:text-zinc-200 transition-colors duration-500 antialiased overflow-hidden selection:bg-brand-500/30 selection:text-brand-900 dark:selection:text-white">
+    <div class="ambient-glow animate-pulse-slow"></div>
+    <div id="root" class="relative z-10 h-full"></div>
+  </body>
+</html>
