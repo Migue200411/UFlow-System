@@ -1,5 +1,5 @@
 import { FX_RATES } from './constants';
-import { Currency, Language } from './types';
+import { Currency, Language, AppContextType } from './types';
 
 export const formatCurrency = (
   amount: number,
@@ -9,34 +9,19 @@ export const formatCurrency = (
 ): string => {
   const isCOP = currency === 'COP';
   
-  // Define options based on requirements
   const options: Intl.NumberFormatOptions = {
     style: 'currency',
     currency: currency,
-    // For COP: default no cents, unless showCents is true.
-    // For USD/EUR: default 2 decimals.
     minimumFractionDigits: isCOP ? (showCents ? 2 : 0) : 2,
     maximumFractionDigits: isCOP ? (showCents ? 2 : 0) : 2,
   };
 
-  // Locale override specifically for formatting preferences
-  // ES: 1.234.567,00
-  // EN: 1,234,567.00
   const locale = lang === 'es' ? 'es-CO' : 'en-US';
   
   try {
     const formatter = new Intl.NumberFormat(locale, options);
     let formatted = formatter.format(amount);
-
-    // Custom tweak for COP in English to ensure "COP" prefix is clear if the browser defaults to symbol
-    // However, Intl usually handles this. If we want "US$ 100" style vs "$100", Intl does it via currencyDisplay.
-    // The prompt requested: 
-    // ES: $ 1.234.567 (COP) -> Standard es-CO
-    // EN: COP $1,234,567 -> Standard en-US usually prints "COP 1,234,567.00" or "$1,234,567.00" depending on impl.
-    // Let's force a bit of consistency if needed, but Intl is usually best left alone for robustness.
     
-    // Fix: Some browsers might use 'COP' symbol as '$'.
-    // If EN and COP, we want to be explicit.
     if (lang === 'en' && isCOP && !formatted.includes('COP')) {
         formatted = `COP ${formatted}`;
     }
@@ -50,10 +35,8 @@ export const formatCurrency = (
 export const convertToBase = (amount: number, from: Currency, base: Currency): number => {
   if (from === base) return amount;
   
-  // Convert 'from' to COP (intermediate)
   const amountInCOP = amount * FX_RATES[from];
   
-  // Convert COP to 'base'
   if (base === 'COP') return amountInCOP;
   
   return amountInCOP / FX_RATES[base];
@@ -64,3 +47,129 @@ export const cn = (...classes: (string | undefined | null | false)[]) => {
 };
 
 export const generateId = () => Math.random().toString(36).substring(2, 9);
+
+// --- MOCK AI ENGINE ---
+// This simulates an NLP backend. It matches keywords and extracts entities.
+
+interface AIResponse {
+  text: string;
+  structured?: {
+    type: 'transaction' | 'goal';
+    data: any;
+  };
+}
+
+export const processAICommand = (prompt: string, context: AppContextType): Promise<AIResponse> => {
+  return new Promise((resolve) => {
+    // Simulate API delay
+    setTimeout(() => {
+      const p = prompt.toLowerCase();
+
+      // 1. Transaction Creation Logic (Regex extraction)
+      if (p.includes('spent') || p.includes('paid') || p.includes('buy') || p.includes('income') || p.includes('received') || p.includes('spend')) {
+        
+        // Extract Amount (e.g., 50k, 50000, 1.5m)
+        let amount = 0;
+        const numberMatch = p.match(/(\d+(?:[.,]\d+)?)(k|m)?/);
+        if (numberMatch) {
+          let val = parseFloat(numberMatch[1].replace(',', '.'));
+          if (numberMatch[2] === 'k') val *= 1000;
+          if (numberMatch[2] === 'm') val *= 1000000;
+          amount = val;
+        }
+
+        // Extract Currency
+        let currency = 'COP';
+        if (p.includes('usd') || p.includes('dollar')) currency = 'USD';
+        if (p.includes('eur') || p.includes('euro')) currency = 'EUR';
+
+        // Extract Category
+        let category = 'Misc';
+        if (p.includes('food') || p.includes('lunch') || p.includes('dinner')) category = 'Food';
+        if (p.includes('transport') || p.includes('taxi') || p.includes('uber')) category = 'Transport';
+        if (p.includes('rent')) category = 'Rent';
+        if (p.includes('salary')) category = 'Salary';
+
+        // Extract Date (simple 'yesterday' logic)
+        let date = new Date();
+        if (p.includes('yesterday')) date.setDate(date.getDate() - 1);
+
+        const type = (p.includes('income') || p.includes('received') || p.includes('salary')) ? 'income' : 'expense';
+
+        resolve({
+          text: `I've prepared a ${type} record for you. Does this look correct?`,
+          structured: {
+            type: 'transaction',
+            data: {
+              type,
+              amount,
+              currency,
+              category,
+              accountId: context.accounts[0]?.id, // Default to first account
+              note: 'Created with AI',
+              date: date.toISOString(),
+            }
+          }
+        });
+        return;
+      }
+
+      // 2. Goal Creation Logic
+      if (p.includes('goal') || p.includes('save')) {
+        let amount = 0;
+        const numberMatch = p.match(/(\d+(?:[.,]\d+)?)(k|m)?/);
+        if (numberMatch) {
+          let val = parseFloat(numberMatch[1].replace(',', '.'));
+          if (numberMatch[2] === 'k') val *= 1000;
+          if (numberMatch[2] === 'm') val *= 1000000;
+          amount = val;
+        }
+
+        resolve({
+          text: "That's a great target. I've drafted a new savings goal.",
+          structured: {
+            type: 'goal',
+            data: {
+              name: 'New Goal',
+              targetAmount: amount,
+              currentAmount: 0,
+              currency: context.currencyBase,
+              status: 'active'
+            }
+          }
+        });
+        return;
+      }
+
+      // 3. Q&A / Recommendations (Context Aware)
+      if (p.includes('balance') || p.includes('have')) {
+        // Calculate total available
+        const assets = context.accounts.reduce((acc, curr) => {
+          const rawBalance = context.transactions
+            .filter(t => t.accountId === curr.id)
+            .reduce((sum, t) => sum + (t.type === 'income' ? t.amount : t.type === 'expense' ? -t.amount : t.amount), 0);
+          return acc + convertToBase(rawBalance, curr.currency, context.currencyBase);
+        }, 0);
+        
+        const fmt = formatCurrency(assets, context.currencyBase, context.language, false);
+        resolve({
+          text: `Your total calculated assets across all accounts are approximately ${fmt}. This includes all liquidity sources.`
+        });
+        return;
+      }
+
+      if (p.includes('burn') || p.includes('spend') || p.includes('expenses')) {
+         resolve({
+             text: "Your monthly burn rate is currently 12% higher than last month. Primary drivers: Food & Transport. Recommendation: Review recurring subscriptions."
+         });
+         return;
+      }
+
+      // Default Fallback
+      resolve({
+        text: "I can help you track expenses, set goals, or analyze your cash flow. Try saying 'I spent 20k on taxi' or 'Create a goal for 5M'."
+      });
+
+    }, 1200); // 1.2s Artificial Delay
+  });
+};

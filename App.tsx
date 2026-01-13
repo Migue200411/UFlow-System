@@ -3,7 +3,7 @@ import { Layout } from './components/Layout';
 import { useApp } from './context/AppContext';
 import { DashboardView } from './views/Dashboard';
 import { AuthView } from './views/AuthView';
-import { HistoryView, AnalyticsView, SettingsView, AccountsView, GoalsView, DebtsView } from './views/Modules';
+import { HistoryView, AnalyticsView, SettingsView, AccountsView, GoalsView, DebtsView, AIAssistantView } from './views/Modules';
 import { Loader2 } from 'lucide-react';
 import { ToastContainer } from './components/UIComponents';
 
@@ -46,6 +46,7 @@ const ViewRouter: React.FC = () => {
     case 'debts': return <DebtsView />;
     case 'goals': return <GoalsView />;
     case 'settings': return <SettingsView />;
+    case 'ai-assistant': return <AIAssistantView />;
     default: return <DashboardView />;
   }
 };

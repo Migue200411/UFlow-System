@@ -6,7 +6,7 @@ export type TransactionType = 'income' | 'expense' | 'adjustment';
 export type DebtType = 'owes_me' | 'i_owe';
 export type DebtStatus = 'pending' | 'partial' | 'paid';
 export type GoalStatus = 'active' | 'completed' | 'paused';
-export type ViewState = 'dashboard' | 'history' | 'analytics' | 'accounts' | 'debts' | 'goals' | 'settings';
+export type ViewState = 'dashboard' | 'history' | 'analytics' | 'accounts' | 'debts' | 'goals' | 'settings' | 'ai-assistant';
 
 export interface UserProfile {
   uid: string;
@@ -75,6 +75,17 @@ export interface Budget {
   limit: number;
   spent: number; // Calculated on the fly ideally, but kept simple here
   currency: Currency;
+}
+
+export interface AIMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: number;
+  suggestion?: {
+    type: 'transaction' | 'goal';
+    data: any;
+  };
 }
 
 export interface AppState {

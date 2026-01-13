@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { Card, Button, Input, Select, Badge, Money, Toggle, SegmentedControl } from '../components/UIComponents';
-import { convertToBase, cn } from '../utils';
+import { convertToBase, cn, processAICommand, generateId } from '../utils';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
-import { Moon, Sun, Monitor, Globe, Shield, CreditCard, LogOut, User, Activity, TrendingUp, BarChart3, PieChart as PieIcon } from 'lucide-react';
+import { Moon, Sun, Monitor, Globe, Shield, CreditCard, LogOut, User, Activity, TrendingUp, BarChart3, PieChart as PieIcon, Send, Sparkles, Bot } from 'lucide-react';
+import { AIMessage } from '../types';
 
 // --- HISTORY VIEW ---
 export const HistoryView = () => {
@@ -67,10 +68,7 @@ export const AnalyticsView = () => {
   const { transactions, currencyBase, t, theme, reduceMotion } = useApp();
 
   // Prepare Area Chart Data (Balance Flow)
-  // Sort by date ascending
   const sortedTx = [...transactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  
-  // Calculate running balance
   let runningBalance = 0;
   const areaData = sortedTx.map(tx => {
     const val = convertToBase(tx.amount, tx.currency, currencyBase);
@@ -83,42 +81,23 @@ export const AnalyticsView = () => {
     };
   });
 
-  // Prepare Pie Chart Data (Expenses by Category)
   const byCat: Record<string, number> = {};
   transactions.filter(t => t.type === 'expense').forEach(tx => {
     const val = convertToBase(tx.amount, tx.currency, currencyBase);
     byCat[tx.category] = (byCat[tx.category] || 0) + val;
   });
-  
-  const pieData = Object.entries(byCat)
-    .map(([name, value]) => ({ name, value }))
-    .sort((a, b) => b.value - a.value);
-
-  // Premium Monochromatic Purple Palette for Charts
-  const COLORS = [
-    '#7C5CFF', // Brand 500
-    '#522EC9', // Brand 700
-    '#A18FFF', // Brand 400
-    '#361E85', // Brand 900
-    '#C0B5FF', // Brand 300
-    '#1E0E4F'  // Brand 950
-  ];
-
+  const pieData = Object.entries(byCat).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  const COLORS = ['#7C5CFF', '#522EC9', '#A18FFF', '#361E85', '#C0B5FF', '#1E0E4F'];
   const isDark = theme === 'dark';
 
-  // --- Premium Custom Tooltip Component ---
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
         <div className="bg-white/80 dark:bg-[#0B0B12]/80 border border-white/20 dark:border-white/10 p-4 rounded-xl shadow-glass backdrop-blur-xl animate-in zoom-in-95 duration-200">
-          <p className="text-[10px] uppercase font-bold text-zinc-500 dark:text-zinc-400 tracking-wider mb-1">
-            {label || payload[0].name}
-          </p>
+          <p className="text-[10px] uppercase font-bold text-zinc-500 dark:text-zinc-400 tracking-wider mb-1">{label || payload[0].name}</p>
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-6 bg-brand-500 rounded-full" />
-            <p className="text-2xl font-mono font-bold text-zinc-900 dark:text-white tracking-tight">
-              <Money amount={payload[0].value} currency={currencyBase} />
-            </p>
+            <p className="text-2xl font-mono font-bold text-zinc-900 dark:text-white tracking-tight"><Money amount={payload[0].value} currency={currencyBase} /></p>
           </div>
         </div>
       );
@@ -128,26 +107,15 @@ export const AnalyticsView = () => {
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
-      
-      {/* Chart 1: Net Asset Flow (Area Chart) */}
       <Card className="lg:col-span-2 min-h-[450px] flex flex-col relative overflow-hidden group border-brand-500/10 hover:border-brand-500/20">
-        <div className="absolute top-0 right-0 p-8 opacity-5 dark:opacity-10 pointer-events-none transition-opacity group-hover:opacity-10 dark:group-hover:opacity-20">
-           <Activity className="w-40 h-40 text-brand-500" />
-        </div>
-        
+        <div className="absolute top-0 right-0 p-8 opacity-5 dark:opacity-10 pointer-events-none transition-opacity group-hover:opacity-10 dark:group-hover:opacity-20"><Activity className="w-40 h-40 text-brand-500" /></div>
         <div className="mb-8 relative z-10 px-2 flex justify-between items-end">
            <div>
-             <h3 className="font-bold text-xl text-zinc-900 dark:text-white tracking-tight flex items-center gap-2">
-               <TrendingUp className="w-5 h-5 text-brand-500" />
-               Net Asset Flow
-             </h3>
-             <p className="text-xs text-zinc-500 dark:text-zinc-400 font-mono mt-1">
-               Historical balance trajectory in {currencyBase}
-             </p>
+             <h3 className="font-bold text-xl text-zinc-900 dark:text-white tracking-tight flex items-center gap-2"><TrendingUp className="w-5 h-5 text-brand-500" /> Net Asset Flow</h3>
+             <p className="text-xs text-zinc-500 dark:text-zinc-400 font-mono mt-1">Historical balance trajectory in {currencyBase}</p>
            </div>
            <Badge variant="brand">LIVE</Badge>
         </div>
-        
         <div className="flex-1 w-full h-[320px] relative z-10">
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={areaData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -157,78 +125,33 @@ export const AnalyticsView = () => {
                   <stop offset="95%" stopColor="#7C5CFF" stopOpacity={0}/>
                 </linearGradient>
               </defs>
-              <CartesianGrid 
-                strokeDasharray="3 3" 
-                vertical={false} 
-                stroke={isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'} 
-              />
-              <XAxis 
-                dataKey="date" 
-                axisLine={false} 
-                tickLine={false} 
-                tick={{ fill: isDark ? '#71717a' : '#a1a1aa', fontSize: 10, fontFamily: 'monospace' }} 
-                dy={10}
-                padding={{ left: 10, right: 10 }}
-              />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'} />
+              <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: isDark ? '#71717a' : '#a1a1aa', fontSize: 10, fontFamily: 'monospace' }} dy={10} padding={{ left: 10, right: 10 }}/>
               <YAxis hide />
               <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#7C5CFF', strokeWidth: 1, strokeDasharray: '4 4' }} />
-              <Area 
-                type="monotone" 
-                dataKey="balance" 
-                stroke="#7C5CFF" 
-                strokeWidth={3}
-                fillOpacity={1} 
-                fill="url(#colorBal)" 
-                isAnimationActive={!reduceMotion}
-                animationDuration={2000}
-                activeDot={{ r: 6, strokeWidth: 0, fill: '#fff', className: 'animate-pulse shadow-[0_0_15px_#7C5CFF]' }}
-              />
+              <Area type="monotone" dataKey="balance" stroke="#7C5CFF" strokeWidth={3} fillOpacity={1} fill="url(#colorBal)" isAnimationActive={!reduceMotion} animationDuration={2000} activeDot={{ r: 6, strokeWidth: 0, fill: '#fff', className: 'animate-pulse shadow-[0_0_15px_#7C5CFF]' }} />
             </AreaChart>
           </ResponsiveContainer>
         </div>
       </Card>
 
-      {/* Chart 2: Category Breakdown (Donut Chart) */}
       <Card className="min-h-[450px] flex flex-col relative group">
          <div className="absolute top-6 left-6 z-10">
-            <h3 className="font-bold text-lg text-zinc-900 dark:text-white flex items-center gap-2">
-              <PieIcon className="w-4 h-4 text-zinc-400" />
-              Expense Distribution
-            </h3>
+            <h3 className="font-bold text-lg text-zinc-900 dark:text-white flex items-center gap-2"><PieIcon className="w-4 h-4 text-zinc-400" /> Expense Distribution</h3>
             <p className="text-xs text-zinc-500 dark:text-zinc-400 font-mono mt-1">By Category</p>
          </div>
-         
          <div className="w-full flex-1 flex flex-col justify-center items-center relative z-10 mt-6">
             <div className="w-full h-[250px] relative">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie
-                    data={pieData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={65}
-                    outerRadius={85}
-                    paddingAngle={5}
-                    dataKey="value"
-                    isAnimationActive={!reduceMotion}
-                    stroke="none"
-                    cornerRadius={6}
-                  >
+                  <Pie data={pieData} cx="50%" cy="50%" innerRadius={65} outerRadius={85} paddingAngle={5} dataKey="value" isAnimationActive={!reduceMotion} stroke="none" cornerRadius={6}>
                     {pieData.map((entry, index) => (
-                      <Cell 
-                        key={`cell-${index}`} 
-                        fill={COLORS[index % COLORS.length]} 
-                        className="drop-shadow-lg hover:opacity-80 transition-all duration-300 hover:scale-105 origin-center cursor-pointer outline-none"
-                        stroke="rgba(255,255,255,0.05)"
-                        strokeWidth={1}
-                      />
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} className="drop-shadow-lg hover:opacity-80 transition-all duration-300 hover:scale-105 origin-center cursor-pointer outline-none" stroke="rgba(255,255,255,0.05)" strokeWidth={1}/>
                     ))}
                   </Pie>
                   <Tooltip content={<CustomTooltip />} />
                 </PieChart>
               </ResponsiveContainer>
-              
-              {/* Center Stat */}
               <div className="absolute inset-0 top-0 flex items-center justify-center pointer-events-none">
                 <div className="text-center animate-in zoom-in duration-500 delay-300">
                    <p className="text-3xl font-black text-zinc-900 dark:text-white tracking-tighter">{pieData.length}</p>
@@ -236,8 +159,6 @@ export const AnalyticsView = () => {
                 </div>
               </div>
             </div>
-
-            {/* Premium Legend Chips */}
             <div className="flex flex-wrap gap-2 justify-center px-4 mt-6 max-h-[100px] overflow-y-auto custom-scrollbar">
               {pieData.map((entry, index) => (
                 <div key={index} className="flex items-center gap-1.5 bg-zinc-100 dark:bg-white/5 px-3 py-1.5 rounded-full border border-zinc-200 dark:border-white/5 hover:border-brand-500/30 transition-colors">
@@ -245,6 +166,174 @@ export const AnalyticsView = () => {
                   <span className="text-[10px] font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wide max-w-[80px] truncate">{entry.name}</span>
                 </div>
               ))}
+            </div>
+         </div>
+      </Card>
+    </div>
+  );
+};
+
+// --- AI ASSISTANT VIEW ---
+export const AIAssistantView = () => {
+  const { t, user, addTransaction, addGoal } = useApp();
+  const context = useApp(); // Full context for AI
+  const scrollRef = useRef<HTMLDivElement>(null);
+  
+  const [messages, setMessages] = useState<AIMessage[]>([
+    { id: 'welcome', role: 'assistant', content: t('ai.welcome'), timestamp: Date.now() }
+  ]);
+  const [inputValue, setInputValue] = useState('');
+  const [isTyping, setIsTyping] = useState(false);
+
+  // Auto-scroll
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, isTyping]);
+
+  const handleSend = async () => {
+    if (!inputValue.trim()) return;
+    
+    const userMsg: AIMessage = { 
+      id: generateId(), 
+      role: 'user', 
+      content: inputValue, 
+      timestamp: Date.now() 
+    };
+    
+    setMessages(prev => [...prev, userMsg]);
+    setInputValue('');
+    setIsTyping(true);
+
+    try {
+      const response = await processAICommand(userMsg.content, context);
+      
+      const aiMsg: AIMessage = {
+        id: generateId(),
+        role: 'assistant',
+        content: response.text,
+        timestamp: Date.now(),
+        suggestion: response.structured
+      };
+      
+      setMessages(prev => [...prev, aiMsg]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
+  const handleApplySuggestion = (suggestion: any) => {
+    if (suggestion.type === 'transaction') {
+      addTransaction(suggestion.data);
+    } else if (suggestion.type === 'goal') {
+      addGoal(suggestion.data);
+    }
+    // Add success message
+    setMessages(prev => [...prev, {
+       id: generateId(),
+       role: 'assistant',
+       content: '✅ Action executed successfully. Database updated.',
+       timestamp: Date.now()
+    }]);
+  };
+
+  return (
+    <div className="h-[calc(100vh-140px)] flex flex-col animate-in fade-in zoom-in-95 duration-500">
+      
+      {/* Header Area */}
+      <div className="mb-4 flex items-center justify-between">
+         <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-brand-500 rounded-xl shadow-[0_0_20px_rgba(124,92,255,0.4)]">
+               <Sparkles className="w-5 h-5 text-white" />
+            </div>
+            <div>
+               <h1 className="text-xl font-bold text-zinc-900 dark:text-white tracking-tight">AI Assistant <span className="text-[10px] bg-brand-500/10 text-brand-500 px-1.5 py-0.5 rounded ml-2 uppercase tracking-widest border border-brand-500/20">Beta</span></h1>
+               <p className="text-xs text-zinc-500 dark:text-zinc-400">Context-aware financial intelligence</p>
+            </div>
+         </div>
+      </div>
+
+      {/* Chat Container */}
+      <Card className="flex-1 flex flex-col overflow-hidden p-0 border-brand-500/10 relative">
+         <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5 pointer-events-none" />
+         
+         {/* Messages Area */}
+         <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar" ref={scrollRef}>
+            {messages.map((msg) => (
+               <div key={msg.id} className={cn("flex gap-4", msg.role === 'user' ? "justify-end" : "justify-start")}>
+                  {msg.role === 'assistant' && (
+                     <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center shrink-0 mt-1 shadow-lg shadow-brand-500/20">
+                        <Bot className="w-4 h-4 text-white" />
+                     </div>
+                  )}
+                  
+                  <div className={cn(
+                     "max-w-[80%] rounded-2xl p-4 text-sm leading-relaxed shadow-sm",
+                     msg.role === 'user' 
+                        ? "bg-zinc-800 text-white rounded-br-none" 
+                        : "bg-white dark:bg-white/5 border border-zinc-200 dark:border-white/5 text-zinc-800 dark:text-zinc-200 rounded-tl-none backdrop-blur-sm"
+                  )}>
+                     <p>{msg.content}</p>
+                     
+                     {/* Suggestion Card inside Chat */}
+                     {msg.suggestion && (
+                        <div className="mt-4 p-3 bg-brand-500/5 border border-brand-500/20 rounded-xl">
+                           <div className="flex items-center gap-2 mb-2 text-xs font-bold text-brand-600 dark:text-brand-400 uppercase tracking-wide">
+                              <Sparkles className="w-3 h-3" /> Suggested Action
+                           </div>
+                           <div className="text-xs font-mono mb-3 text-zinc-600 dark:text-zinc-400 bg-white/50 dark:bg-black/20 p-2 rounded border border-black/5 dark:border-white/5">
+                              {JSON.stringify(msg.suggestion.data, null, 2).substring(0, 150)}...
+                           </div>
+                           <Button size="sm" className="w-full" onClick={() => handleApplySuggestion(msg.suggestion)}>
+                              Confirm & Create
+                           </Button>
+                        </div>
+                     )}
+                  </div>
+               </div>
+            ))}
+            
+            {isTyping && (
+               <div className="flex gap-4 justify-start animate-in fade-in">
+                  <div className="w-8 h-8 rounded-full bg-brand-600 flex items-center justify-center shrink-0 shadow-lg shadow-brand-500/20">
+                     <Bot className="w-4 h-4 text-white" />
+                  </div>
+                  <div className="bg-white/5 border border-white/5 rounded-2xl rounded-tl-none p-4 flex items-center gap-2 h-12">
+                     <span className="w-1.5 h-1.5 bg-brand-500 rounded-full animate-bounce" style={{ animationDelay: '0ms'}} />
+                     <span className="w-1.5 h-1.5 bg-brand-500 rounded-full animate-bounce" style={{ animationDelay: '150ms'}} />
+                     <span className="w-1.5 h-1.5 bg-brand-500 rounded-full animate-bounce" style={{ animationDelay: '300ms'}} />
+                  </div>
+               </div>
+            )}
+         </div>
+
+         {/* Input Area */}
+         <div className="p-4 border-t border-zinc-100 dark:border-white/5 bg-white/80 dark:bg-black/20 backdrop-blur-md">
+            <div className="relative flex items-center gap-2">
+               <textarea 
+                  className="w-full h-12 py-3 pl-4 pr-12 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 focus:ring-2 focus:ring-brand-500/50 resize-none custom-scrollbar text-sm"
+                  placeholder={t('ai.placeholder')}
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  onKeyDown={(e) => {
+                     if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSend();
+                     }
+                  }}
+               />
+               <Button 
+                  size="icon" 
+                  className="absolute right-2 bottom-2 h-8 w-8 bg-brand-600 hover:bg-brand-500 border-none text-white shadow-neon"
+                  onClick={handleSend}
+                  disabled={!inputValue.trim() || isTyping}
+               >
+                  <Send className="w-4 h-4" />
+               </Button>
+            </div>
+            <div className="text-[10px] text-zinc-400 mt-2 text-center flex items-center justify-center gap-2">
+               <Shield className="w-3 h-3" /> AI outputs are simulated for demo purposes.
             </div>
          </div>
       </Card>

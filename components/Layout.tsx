@@ -2,10 +2,10 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { 
   LayoutDashboard, History, PieChart, Wallet, ShieldAlert, Target, Settings, 
-  Menu, Plus, Eye, EyeOff, Moon, Sun, ArrowRightLeft, Camera, FileText
+  Menu, Plus, Eye, EyeOff, Moon, Sun, Sparkles, Loader2, ArrowRight
 } from 'lucide-react';
-import { cn } from '../utils';
-import { Button, Modal, Input, Select, ToastContainer } from './UIComponents';
+import { cn, processAICommand } from '../utils';
+import { Button, Modal, Input, Select, ToastContainer, Card, Money } from './UIComponents';
 import { TransactionType, Currency } from '../types';
 
 const NavItem = ({ icon: Icon, label, active, onClick }: any) => (
@@ -132,10 +132,114 @@ const QuickInputModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => 
   );
 };
 
+// --- CREATE WITH AI MODAL ---
+const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
+  const { t, addTransaction, addGoal } = useApp();
+  const context = useApp(); // Pass full context to AI
+  const [prompt, setPrompt] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [result, setResult] = useState<any>(null);
+
+  const handleGenerate = async () => {
+    if (!prompt.trim()) return;
+    setIsLoading(true);
+    try {
+      const response = await processAICommand(prompt, context);
+      if (response.structured) {
+        setResult(response.structured);
+      } else {
+        // If no structure, just show text (rare case for this modal)
+        alert(response.text);
+      }
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleConfirm = () => {
+    if (!result) return;
+    if (result.type === 'transaction') {
+      addTransaction(result.data);
+    } else if (result.type === 'goal') {
+      addGoal(result.data);
+    }
+    onClose();
+    setPrompt('');
+    setResult(null);
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={() => { onClose(); setResult(null); }} title={t('ai.modal_title')}>
+      {!result ? (
+        <div className="space-y-6">
+          <div className="relative">
+            <textarea
+              className="w-full h-32 p-4 rounded-xl bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500/50 resize-none"
+              placeholder={t('ai.modal_placeholder')}
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleGenerate(); } }}
+            />
+            <div className="absolute bottom-3 right-3 text-xs text-zinc-400">Shift+Enter for new line</div>
+          </div>
+          
+          <Button 
+            className="w-full h-12" 
+            onClick={handleGenerate} 
+            disabled={!prompt.trim() || isLoading}
+          >
+            {isLoading ? (
+               <><Loader2 className="w-4 h-4 animate-spin mr-2" /> {t('ai.thinking')}</>
+            ) : (
+               <><Sparkles className="w-4 h-4 mr-2" /> Generate with AI</>
+            )}
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
+          <div className="flex items-center gap-2 text-brand-500 text-sm font-bold uppercase tracking-wider mb-2">
+            <Sparkles className="w-4 h-4" /> {t('ai.generated')}
+          </div>
+          
+          {/* Preview Card */}
+          <Card className="bg-brand-500/5 border-brand-500/20">
+            <div className="grid grid-cols-2 gap-y-4 gap-x-2 text-sm">
+              <div className="text-zinc-500 uppercase text-[10px] font-bold">Type</div>
+              <div className="font-mono font-bold capitalize">{result.type}</div>
+
+              {Object.entries(result.data).map(([key, value]) => {
+                if (key === 'id' || key === 'accountId' || key === 'createdAt') return null;
+                return (
+                  <React.Fragment key={key}>
+                    <div className="text-zinc-500 uppercase text-[10px] font-bold">{key}</div>
+                    <div className="font-medium text-zinc-900 dark:text-zinc-100 truncate">
+                      {key === 'amount' || key === 'targetAmount' ? (
+                        <Money amount={value as number} currency={result.data.currency || 'COP'} />
+                      ) : (
+                        String(value)
+                      )}
+                    </div>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </Card>
+
+          <div className="flex gap-3">
+             <Button variant="ghost" className="flex-1" onClick={() => setResult(null)}>Edit</Button>
+             <Button className="flex-[2]" onClick={handleConfirm}>{t('act.confirm_create')}</Button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+};
+
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentView, setView, t, privacyMode, togglePrivacy, theme, setTheme, toasts, removeToast } = useApp();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isQuickInputOpen, setQuickInputOpen] = useState(false);
+  const [isAiCreateOpen, setAiCreateOpen] = useState(false);
 
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
 
@@ -146,6 +250,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     { id: 'accounts', icon: Wallet, label: t('nav.accounts') },
     { id: 'debts', icon: ShieldAlert, label: t('nav.debts') },
     { id: 'goals', icon: Target, label: t('nav.goals') },
+    { id: 'ai-assistant', icon: Sparkles, label: t('nav.ai') }, // NEW MODULE
     { id: 'settings', icon: Settings, label: t('nav.settings') },
   ];
 
@@ -202,6 +307,16 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4">
+            {/* Create with AI Button (New) */}
+            <Button 
+               variant="primary" 
+               className="hidden md:flex bg-gradient-to-r from-violet-600 to-fuchsia-600 border-none shadow-neon"
+               onClick={() => setAiCreateOpen(true)}
+            >
+               <Sparkles className="w-4 h-4" />
+               <span className="hidden lg:inline">{t('act.create_ai')}</span>
+            </Button>
+
             <Button variant="icon" onClick={togglePrivacy} title="Toggle Privacy">
               {privacyMode ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
             </Button>
@@ -251,6 +366,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       </main>
 
       <QuickInputModal isOpen={isQuickInputOpen} onClose={() => setQuickInputOpen(false)} />
+      <CreateWithAIModal isOpen={isAiCreateOpen} onClose={() => setAiCreateOpen(false)} />
     </div>
   );
 };

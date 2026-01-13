@@ -17,6 +17,7 @@ export const TRANSLATIONS = {
     'nav.debts': 'Risk & Debts',
     'nav.goals': 'Goals',
     'nav.settings': 'Settings',
+    'nav.ai': 'AI Assistant',
     // Dashboard
     'dash.total': 'Total Balance',
     'dash.available': 'Available Liquidity',
@@ -28,8 +29,10 @@ export const TRANSLATIONS = {
     'dash.commands': 'Quick Commands',
     // Actions
     'act.quick_input': 'Quick Input',
+    'act.create_ai': 'Create with AI',
     'act.add': 'Add',
     'act.save': 'Save Record',
+    'act.confirm_create': 'Confirm & Create',
     'act.cancel': 'Cancel',
     'act.edit_72h': 'EDIT 72H',
     'act.transfer': 'Transfer',
@@ -63,6 +66,13 @@ export const TRANSLATIONS = {
     'set.privacy': 'Privacy Mode',
     'set.cents': 'Precision (Show Cents)',
     'set.motion': 'Reduce Motion',
+    // AI
+    'ai.welcome': 'UFlow AI Assistant Online. How can I optimize your financial flow today?',
+    'ai.placeholder': 'Ask anything or describe a transaction...',
+    'ai.modal_title': 'Describe what you want to create',
+    'ai.modal_placeholder': 'e.g. "I spent 50k on lunch yesterday" or "New goal for Travel 5M COP"',
+    'ai.thinking': 'Processing Request...',
+    'ai.generated': 'Generated Suggestion',
   },
   es: {
     'nav.dashboard': 'Panel de Control',
@@ -72,6 +82,7 @@ export const TRANSLATIONS = {
     'nav.debts': 'Riesgo y Deudas',
     'nav.goals': 'Metas',
     'nav.settings': 'Ajustes',
+    'nav.ai': 'Asistente IA',
     'dash.total': 'Balance Total',
     'dash.available': 'Liquidez Disponible',
     'dash.relative': 'Balance Relativo',
@@ -81,8 +92,10 @@ export const TRANSLATIONS = {
     'dash.burn': 'Tasa de Gasto Mensual',
     'dash.commands': 'Comandos Rápidos',
     'act.quick_input': 'Entrada Rápida',
+    'act.create_ai': 'Crear con IA',
     'act.add': 'Agregar',
     'act.save': 'Guardar Registro',
+    'act.confirm_create': 'Confirmar y Crear',
     'act.cancel': 'Cancelar',
     'act.edit_72h': 'EDITAR 72H',
     'act.transfer': 'Transferir',
@@ -112,6 +125,12 @@ export const TRANSLATIONS = {
     'set.privacy': 'Modo Privacidad',
     'set.cents': 'Precisión (Mostrar Centavos)',
     'set.motion': 'Reducir Movimiento',
+    'ai.welcome': 'Asistente UFlow en línea. ¿Cómo puedo optimizar tu flujo financiero hoy?',
+    'ai.placeholder': 'Pregunta lo que sea o describe una transacción...',
+    'ai.modal_title': 'Describe qué quieres crear',
+    'ai.modal_placeholder': 'ej. "Gasté 50k en almuerzo ayer" o "Nueva meta Viaje 5M COP"',
+    'ai.thinking': 'Procesando Solicitud...',
+    'ai.generated': 'Sugerencia Generada',
   }
 };
 
