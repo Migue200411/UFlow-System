@@ -2,8 +2,8 @@ import React from 'react';
 import { useApp } from '../context/AppContext';
 import { Card, Button, Input, Select, Badge, Money, Toggle, SegmentedControl } from '../components/UIComponents';
 import { convertToBase, cn } from '../utils';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell, PieChart, Pie, CartesianGrid } from 'recharts';
-import { Moon, Sun, Monitor, Globe, Shield, Sliders, Calendar, Tag, CreditCard, LogOut, User } from 'lucide-react';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
+import { Moon, Sun, Monitor, Globe, Shield, CreditCard, LogOut, User, Activity, TrendingUp, BarChart3, PieChart as PieIcon } from 'lucide-react';
 
 // --- HISTORY VIEW ---
 export const HistoryView = () => {
@@ -66,31 +66,60 @@ export const HistoryView = () => {
 export const AnalyticsView = () => {
   const { transactions, currencyBase, t, theme, reduceMotion } = useApp();
 
-  const data = transactions.slice().reverse().map((tx, i) => ({
-    name: i.toString(),
-    amount: convertToBase(tx.amount, tx.currency, currencyBase),
-    type: tx.type
-  }));
+  // Prepare Area Chart Data (Balance Flow)
+  // Sort by date ascending
+  const sortedTx = [...transactions].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
   
+  // Calculate running balance
+  let runningBalance = 0;
+  const areaData = sortedTx.map(tx => {
+    const val = convertToBase(tx.amount, tx.currency, currencyBase);
+    runningBalance += (tx.type === 'income' ? val : tx.type === 'expense' ? -val : val);
+    return {
+      date: new Date(tx.date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      balance: runningBalance,
+      amount: val,
+      type: tx.type
+    };
+  });
+
+  // Prepare Pie Chart Data (Expenses by Category)
   const byCat: Record<string, number> = {};
   transactions.filter(t => t.type === 'expense').forEach(tx => {
     const val = convertToBase(tx.amount, tx.currency, currencyBase);
     byCat[tx.category] = (byCat[tx.category] || 0) + val;
   });
-  const pieData = Object.entries(byCat).map(([name, value]) => ({ name, value }));
-  const COLORS = ['#7C5CFF', '#9270FF', '#B099FF', '#22c55e', '#3b82f6', '#f43f5e'];
+  
+  const pieData = Object.entries(byCat)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+
+  // Premium Monochromatic Purple Palette for Charts
+  const COLORS = [
+    '#7C5CFF', // Brand 500
+    '#522EC9', // Brand 700
+    '#A18FFF', // Brand 400
+    '#361E85', // Brand 900
+    '#C0B5FF', // Brand 300
+    '#1E0E4F'  // Brand 950
+  ];
 
   const isDark = theme === 'dark';
 
-  // Custom Tooltip for Premium Look
+  // --- Premium Custom Tooltip Component ---
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
-        <div className="bg-white/95 dark:bg-[#1A1A25]/95 border border-zinc-100 dark:border-white/10 p-4 rounded-2xl shadow-premium backdrop-blur-xl">
-          <p className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider mb-1">Transaction {label}</p>
-          <p className="text-xl font-mono font-bold text-brand-600 dark:text-brand-400">
-            <Money amount={payload[0].value} currency={currencyBase} />
+        <div className="bg-white/80 dark:bg-[#0B0B12]/80 border border-white/20 dark:border-white/10 p-4 rounded-xl shadow-glass backdrop-blur-xl animate-in zoom-in-95 duration-200">
+          <p className="text-[10px] uppercase font-bold text-zinc-500 dark:text-zinc-400 tracking-wider mb-1">
+            {label || payload[0].name}
           </p>
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-6 bg-brand-500 rounded-full" />
+            <p className="text-2xl font-mono font-bold text-zinc-900 dark:text-white tracking-tight">
+              <Money amount={payload[0].value} currency={currencyBase} />
+            </p>
+          </div>
         </div>
       );
     }
@@ -98,23 +127,32 @@ export const AnalyticsView = () => {
   };
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
-      <Card className="min-h-[450px] flex flex-col col-span-1 md:col-span-2 relative overflow-hidden group">
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 animate-in fade-in slide-in-from-bottom-8 duration-700">
+      
+      {/* Chart 1: Net Asset Flow (Area Chart) */}
+      <Card className="lg:col-span-2 min-h-[450px] flex flex-col relative overflow-hidden group border-brand-500/10 hover:border-brand-500/20">
         <div className="absolute top-0 right-0 p-8 opacity-5 dark:opacity-10 pointer-events-none transition-opacity group-hover:opacity-10 dark:group-hover:opacity-20">
-           <Monitor className="w-40 h-40 text-brand-500" />
+           <Activity className="w-40 h-40 text-brand-500" />
         </div>
-        <div className="mb-8 relative z-10 px-2">
-           <h3 className="font-bold text-xl text-zinc-900 dark:text-white tracking-tight">Financial Flow</h3>
-           <p className="text-xs text-zinc-500 dark:text-zinc-400 font-mono mt-1 flex items-center gap-2">
-             BASE CURRENCY <span className="text-brand-600 dark:text-brand-400 font-bold bg-brand-500/10 px-1.5 py-0.5 rounded">{currencyBase}</span>
-           </p>
+        
+        <div className="mb-8 relative z-10 px-2 flex justify-between items-end">
+           <div>
+             <h3 className="font-bold text-xl text-zinc-900 dark:text-white tracking-tight flex items-center gap-2">
+               <TrendingUp className="w-5 h-5 text-brand-500" />
+               Net Asset Flow
+             </h3>
+             <p className="text-xs text-zinc-500 dark:text-zinc-400 font-mono mt-1">
+               Historical balance trajectory in {currencyBase}
+             </p>
+           </div>
+           <Badge variant="brand">LIVE</Badge>
         </div>
         
         <div className="flex-1 w-full h-[320px] relative z-10">
           <ResponsiveContainer width="100%" height="100%">
-            <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+            <AreaChart data={areaData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
               <defs>
-                <linearGradient id="colorAmt" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="colorBal" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="5%" stopColor="#7C5CFF" stopOpacity={0.4}/>
                   <stop offset="95%" stopColor="#7C5CFF" stopOpacity={0}/>
                 </linearGradient>
@@ -122,74 +160,91 @@ export const AnalyticsView = () => {
               <CartesianGrid 
                 strokeDasharray="3 3" 
                 vertical={false} 
-                stroke={isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'} 
+                stroke={isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'} 
               />
-              <XAxis dataKey="name" hide />
+              <XAxis 
+                dataKey="date" 
+                axisLine={false} 
+                tickLine={false} 
+                tick={{ fill: isDark ? '#71717a' : '#a1a1aa', fontSize: 10, fontFamily: 'monospace' }} 
+                dy={10}
+                padding={{ left: 10, right: 10 }}
+              />
               <YAxis hide />
               <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#7C5CFF', strokeWidth: 1, strokeDasharray: '4 4' }} />
               <Area 
                 type="monotone" 
-                dataKey="amount" 
+                dataKey="balance" 
                 stroke="#7C5CFF" 
                 strokeWidth={3}
                 fillOpacity={1} 
-                fill="url(#colorAmt)" 
+                fill="url(#colorBal)" 
                 isAnimationActive={!reduceMotion}
-                animationDuration={1500}
-                activeDot={{ r: 6, strokeWidth: 0, fill: '#7C5CFF', className: 'animate-pulse' }}
+                animationDuration={2000}
+                activeDot={{ r: 6, strokeWidth: 0, fill: '#fff', className: 'animate-pulse shadow-[0_0_15px_#7C5CFF]' }}
               />
             </AreaChart>
           </ResponsiveContainer>
         </div>
       </Card>
 
-      <Card className="min-h-[400px] flex flex-col items-center justify-center relative">
+      {/* Chart 2: Category Breakdown (Donut Chart) */}
+      <Card className="min-h-[450px] flex flex-col relative group">
          <div className="absolute top-6 left-6 z-10">
-            <h3 className="font-bold text-lg text-zinc-900 dark:text-white">Breakdown</h3>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">Expenses by Category</p>
+            <h3 className="font-bold text-lg text-zinc-900 dark:text-white flex items-center gap-2">
+              <PieIcon className="w-4 h-4 text-zinc-400" />
+              Expense Distribution
+            </h3>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 font-mono mt-1">By Category</p>
          </div>
-         <div className="w-full h-[300px] flex justify-center relative z-10 mt-6">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={pieData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={75}
-                  outerRadius={100}
-                  paddingAngle={6}
-                  dataKey="value"
-                  isAnimationActive={!reduceMotion}
-                  stroke="none"
-                  cornerRadius={8}
-                >
-                  {pieData.map((entry, index) => (
-                    <Cell 
-                      key={`cell-${index}`} 
-                      fill={COLORS[index % COLORS.length]} 
-                      className="drop-shadow-sm hover:opacity-80 transition-opacity"
-                    />
-                  ))}
-                </Pie>
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: isDark ? 'rgba(20, 20, 30, 0.9)' : 'rgba(255, 255, 255, 0.95)', 
-                    borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
-                    borderRadius: '12px',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.1)',
-                    backdropFilter: 'blur(10px)',
-                    padding: '12px'
-                  }}
-                  itemStyle={{ color: isDark ? '#fff' : '#09090b', fontWeight: 700, fontFamily: 'Inter' }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-         </div>
-         {/* Center Label */}
-         <div className="absolute inset-0 flex items-center justify-center pointer-events-none mt-6">
-            <div className="text-center bg-white/50 dark:bg-black/20 p-4 rounded-full backdrop-blur-sm">
-               <p className="text-3xl font-bold text-brand-600 dark:text-brand-400">{pieData.length}</p>
-               <p className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold">Cats</p>
+         
+         <div className="w-full flex-1 flex flex-col justify-center items-center relative z-10 mt-6">
+            <div className="w-full h-[250px] relative">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={pieData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={65}
+                    outerRadius={85}
+                    paddingAngle={5}
+                    dataKey="value"
+                    isAnimationActive={!reduceMotion}
+                    stroke="none"
+                    cornerRadius={6}
+                  >
+                    {pieData.map((entry, index) => (
+                      <Cell 
+                        key={`cell-${index}`} 
+                        fill={COLORS[index % COLORS.length]} 
+                        className="drop-shadow-lg hover:opacity-80 transition-all duration-300 hover:scale-105 origin-center cursor-pointer outline-none"
+                        stroke="rgba(255,255,255,0.05)"
+                        strokeWidth={1}
+                      />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<CustomTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+              
+              {/* Center Stat */}
+              <div className="absolute inset-0 top-0 flex items-center justify-center pointer-events-none">
+                <div className="text-center animate-in zoom-in duration-500 delay-300">
+                   <p className="text-3xl font-black text-zinc-900 dark:text-white tracking-tighter">{pieData.length}</p>
+                   <p className="text-[9px] uppercase tracking-widest text-zinc-400 font-bold">Segments</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Premium Legend Chips */}
+            <div className="flex flex-wrap gap-2 justify-center px-4 mt-6 max-h-[100px] overflow-y-auto custom-scrollbar">
+              {pieData.map((entry, index) => (
+                <div key={index} className="flex items-center gap-1.5 bg-zinc-100 dark:bg-white/5 px-3 py-1.5 rounded-full border border-zinc-200 dark:border-white/5 hover:border-brand-500/30 transition-colors">
+                  <div className="w-2 h-2 rounded-full shadow-[0_0_8px_currentColor]" style={{ backgroundColor: COLORS[index % COLORS.length], color: COLORS[index % COLORS.length] }} />
+                  <span className="text-[10px] font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wide max-w-[80px] truncate">{entry.name}</span>
+                </div>
+              ))}
             </div>
          </div>
       </Card>

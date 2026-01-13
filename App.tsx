@@ -5,7 +5,7 @@ import { DashboardView } from './views/Dashboard';
 import { AuthView } from './views/AuthView';
 import { HistoryView, AnalyticsView, SettingsView, AccountsView, GoalsView, DebtsView } from './views/Modules';
 import { Loader2 } from 'lucide-react';
-import { ToastContainer } from './components/UIComponents'; // Import ToastContainer here too for AuthView
+import { ToastContainer } from './components/UIComponents';
 
 interface ErrorBoundaryProps {
   children?: ReactNode;
@@ -53,17 +53,26 @@ const ViewRouter: React.FC = () => {
 const App: React.FC = () => {
   const { user, isLoading, toasts, removeToast } = useApp();
 
+  // 1. Initial Loading State (Waiting for Firebase)
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-dark-bg flex items-center justify-center">
-         <div className="flex flex-col items-center gap-4">
-             <div className="w-12 h-12 bg-brand-500/20 rounded-xl flex items-center justify-center animate-pulse">
-                <div className="w-6 h-6 bg-brand-500 rounded rotate-45" />
+      <div className="min-h-screen bg-light-bg dark:bg-dark-bg flex items-center justify-center transition-colors duration-500">
+         <div className="flex flex-col items-center gap-6 z-10 animate-in fade-in duration-700">
+             <div className="relative">
+               <div className="w-16 h-16 bg-brand-500/20 rounded-2xl flex items-center justify-center blur-md absolute inset-0 animate-pulse" />
+               <div className="w-16 h-16 bg-brand-500/10 border border-brand-500/30 rounded-2xl flex items-center justify-center relative backdrop-blur-sm">
+                  <div className="w-8 h-8 bg-brand-500 rounded-md rotate-45 shadow-[0_0_15px_rgba(124,92,255,0.8)] animate-[spin_3s_linear_infinite]" />
+               </div>
              </div>
-             <div className="flex items-center gap-2 text-brand-500 font-mono text-xs tracking-widest uppercase">
+             <div className="flex items-center gap-2 text-brand-600 dark:text-brand-500 font-mono text-xs tracking-[0.2em] uppercase font-bold">
                <Loader2 className="w-4 h-4 animate-spin" />
-               Initializing System
+               Initializing Protocol
              </div>
+         </div>
+         
+         {/* Background Glow */}
+         <div className="fixed inset-0 pointer-events-none overflow-hidden">
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-brand-500/5 rounded-full blur-[100px]" />
          </div>
       </div>
     );
@@ -71,12 +80,14 @@ const App: React.FC = () => {
 
   return (
     <ErrorBoundary>
+       {/* 2. Auth Gate: If no user, show AuthView */}
        {!user ? (
          <>
            <AuthView />
            <ToastContainer toasts={toasts} removeToast={removeToast} />
          </>
        ) : (
+         /* 3. Authenticated: Show AppShell */
          <Layout>
            <ViewRouter />
          </Layout>
