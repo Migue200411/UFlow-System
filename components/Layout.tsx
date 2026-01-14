@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { 
   LayoutDashboard, History, PieChart, Wallet, ShieldAlert, Target, Settings, 
-  Menu, Plus, Eye, EyeOff, Moon, Sun, Sparkles, Loader2, ArrowRight
+  Menu, Plus, Eye, EyeOff, Moon, Sun, Sparkles, Loader2
 } from 'lucide-react';
 import { cn, processAICommand } from '../utils';
-import { Button, Modal, Input, Select, ToastContainer, Card, Money } from './UIComponents';
+import { Button, Modal, Input, Select, ToastContainer, Card } from './UIComponents';
 import { TransactionType, Currency } from '../types';
 
 const NavItem = ({ icon: Icon, label, active, onClick }: any) => (
@@ -132,24 +132,45 @@ const QuickInputModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => 
   );
 };
 
-// --- CREATE WITH AI MODAL ---
+// --- CREATE WITH AI MODAL (Creation Only) ---
 const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
-  const { t, addTransaction, addGoal } = useApp();
-  const context = useApp(); // Pass full context to AI
+  const { t, addTransaction, addGoal, accounts, setView, addToast } = useApp();
+  const context = useApp();
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [result, setResult] = useState<any>(null);
+  
+  // Staging state for the "Editable Preview"
+  const [resultType, setResultType] = useState<'transaction' | 'goal' | null>(null);
+  const [draftTx, setDraftTx] = useState<any>(null);
+  const [draftGoal, setDraftGoal] = useState<any>(null);
 
   const handleGenerate = async () => {
     if (!prompt.trim()) return;
     setIsLoading(true);
     try {
       const response = await processAICommand(prompt, context);
-      if (response.structured) {
-        setResult(response.structured);
+      
+      // Strict role enforcement
+      if (response.intent === 'query') {
+        const msg = response.lang === 'es' 
+           ? "Este botón es solo para crear entradas. Para consejos, usa el Asistente IA." 
+           : "This tool is for creating entries only. For advice, use the AI Assistant.";
+        addToast(msg, 'info');
+        return;
+      }
+
+      if (response.intent === 'create' && response.structured) {
+        setResultType(response.structured.type);
+        if (response.structured.type === 'transaction') {
+           setDraftTx({
+             ...response.structured.data,
+             date: response.structured.data.date.split('T')[0] // normalize for input date
+           });
+        } else {
+           setDraftGoal(response.structured.data);
+        }
       } else {
-        // If no structure, just show text (rare case for this modal)
-        alert(response.text);
+        addToast(response.text, 'info');
       }
     } finally {
       setIsLoading(false);
@@ -157,20 +178,36 @@ const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () =
   };
 
   const handleConfirm = () => {
-    if (!result) return;
-    if (result.type === 'transaction') {
-      addTransaction(result.data);
-    } else if (result.type === 'goal') {
-      addGoal(result.data);
+    if (resultType === 'transaction' && draftTx) {
+      addTransaction({
+        ...draftTx,
+        date: new Date(draftTx.date).toISOString(),
+        amount: parseFloat(draftTx.amount) // Ensure number
+      });
+      // Redirect to History
+      setView('history');
+    } else if (resultType === 'goal' && draftGoal) {
+      addGoal({
+        ...draftGoal,
+        targetAmount: parseFloat(draftGoal.targetAmount)
+      });
+      // Redirect to Goals
+      setView('goals');
     }
+    handleClose();
+  };
+
+  const handleClose = () => {
     onClose();
+    setResultType(null);
+    setDraftTx(null);
+    setDraftGoal(null);
     setPrompt('');
-    setResult(null);
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={() => { onClose(); setResult(null); }} title={t('ai.modal_title')}>
-      {!result ? (
+    <Modal isOpen={isOpen} onClose={handleClose} title={t('ai.modal_title')}>
+      {!resultType ? (
         <div className="space-y-6">
           <div className="relative">
             <textarea
@@ -179,6 +216,7 @@ const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () =
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
               onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleGenerate(); } }}
+              autoFocus
             />
             <div className="absolute bottom-3 right-3 text-xs text-zinc-400">Shift+Enter for new line</div>
           </div>
@@ -191,42 +229,99 @@ const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () =
             {isLoading ? (
                <><Loader2 className="w-4 h-4 animate-spin mr-2" /> {t('ai.thinking')}</>
             ) : (
-               <><Sparkles className="w-4 h-4 mr-2" /> Generate with AI</>
+               <><Sparkles className="w-4 h-4 mr-2" /> Generate Draft</>
             )}
           </Button>
         </div>
       ) : (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
-          <div className="flex items-center gap-2 text-brand-500 text-sm font-bold uppercase tracking-wider mb-2">
-            <Sparkles className="w-4 h-4" /> {t('ai.generated')}
+          <div className="flex items-center justify-between">
+             <div className="flex items-center gap-2 text-brand-500 text-sm font-bold uppercase tracking-wider">
+               <Sparkles className="w-4 h-4" /> Draft Generated
+             </div>
+             <Button variant="ghost" size="sm" onClick={() => setResultType(null)} className="h-8 text-xs">Back to prompt</Button>
           </div>
           
-          {/* Preview Card */}
-          <Card className="bg-brand-500/5 border-brand-500/20">
-            <div className="grid grid-cols-2 gap-y-4 gap-x-2 text-sm">
-              <div className="text-zinc-500 uppercase text-[10px] font-bold">Type</div>
-              <div className="font-mono font-bold capitalize">{result.type}</div>
+          {/* Editable Preview Card */}
+          <Card className="bg-brand-500/5 border-brand-500/20 p-5 space-y-4">
+            
+            {resultType === 'transaction' && draftTx && (
+              <>
+                 <div className="grid grid-cols-2 gap-4">
+                   <Select 
+                      label="Type"
+                      value={draftTx.type}
+                      onChange={v => setDraftTx({...draftTx, type: v})}
+                      options={[{value:'expense',label:'Expense'},{value:'income',label:'Income'},{value:'adjustment',label:'Adjustment'}]}
+                   />
+                   <Input 
+                      label="Date"
+                      type="date"
+                      value={draftTx.date}
+                      onChange={e => setDraftTx({...draftTx, date: e.target.value})}
+                   />
+                 </div>
+                 <div className="grid grid-cols-3 gap-3">
+                   <div className="col-span-2">
+                      <Input 
+                        label="Amount"
+                        type="number"
+                        value={draftTx.amount}
+                        onChange={e => setDraftTx({...draftTx, amount: e.target.value})}
+                        className="font-mono font-bold"
+                      />
+                   </div>
+                   <Select 
+                      label="Currency"
+                      value={draftTx.currency}
+                      onChange={v => setDraftTx({...draftTx, currency: v})}
+                      options={[{value:'COP',label:'COP'},{value:'USD',label:'USD'},{value:'EUR',label:'EUR'}]}
+                   />
+                 </div>
+                 <Select 
+                    label="Account"
+                    value={draftTx.accountId}
+                    onChange={v => setDraftTx({...draftTx, accountId: v})}
+                    options={accounts.map(acc => ({ value: acc.id, label: acc.name }))}
+                 />
+                 <Input 
+                    label="Category"
+                    value={draftTx.category}
+                    onChange={e => setDraftTx({...draftTx, category: e.target.value})}
+                 />
+              </>
+            )}
 
-              {Object.entries(result.data).map(([key, value]) => {
-                if (key === 'id' || key === 'accountId' || key === 'createdAt') return null;
-                return (
-                  <React.Fragment key={key}>
-                    <div className="text-zinc-500 uppercase text-[10px] font-bold">{key}</div>
-                    <div className="font-medium text-zinc-900 dark:text-zinc-100 truncate">
-                      {key === 'amount' || key === 'targetAmount' ? (
-                        <Money amount={value as number} currency={result.data.currency || 'COP'} />
-                      ) : (
-                        String(value)
-                      )}
-                    </div>
-                  </React.Fragment>
-                );
-              })}
-            </div>
+            {resultType === 'goal' && draftGoal && (
+               <>
+                 <Input 
+                    label="Goal Name"
+                    value={draftGoal.name}
+                    onChange={e => setDraftGoal({...draftGoal, name: e.target.value})}
+                 />
+                 <div className="grid grid-cols-3 gap-3">
+                   <div className="col-span-2">
+                     <Input 
+                        label="Target Amount"
+                        type="number"
+                        value={draftGoal.targetAmount}
+                        onChange={e => setDraftGoal({...draftGoal, targetAmount: e.target.value})}
+                     />
+                   </div>
+                   <Select 
+                      label="Currency"
+                      value={draftGoal.currency}
+                      onChange={v => setDraftGoal({...draftGoal, currency: v})}
+                      options={[{value:'COP',label:'COP'},{value:'USD',label:'USD'},{value:'EUR',label:'EUR'}]}
+                   />
+                 </div>
+               </>
+            )}
+
           </Card>
 
           <div className="flex gap-3">
-             <Button variant="ghost" className="flex-1" onClick={() => setResult(null)}>Edit</Button>
+             <Button variant="ghost" className="flex-1" onClick={handleClose}>{t('act.cancel')}</Button>
              <Button className="flex-[2]" onClick={handleConfirm}>{t('act.confirm_create')}</Button>
           </div>
         </div>
@@ -250,7 +345,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     { id: 'accounts', icon: Wallet, label: t('nav.accounts') },
     { id: 'debts', icon: ShieldAlert, label: t('nav.debts') },
     { id: 'goals', icon: Target, label: t('nav.goals') },
-    { id: 'ai-assistant', icon: Sparkles, label: t('nav.ai') }, // NEW MODULE
+    { id: 'ai-assistant', icon: Sparkles, label: t('nav.ai') },
     { id: 'settings', icon: Settings, label: t('nav.settings') },
   ];
 
@@ -307,7 +402,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           </div>
           
           <div className="flex items-center gap-2 sm:gap-4">
-            {/* Create with AI Button (New) */}
+            {/* Create with AI Button */}
             <Button 
                variant="primary" 
                className="hidden md:flex bg-gradient-to-r from-violet-600 to-fuchsia-600 border-none shadow-neon"

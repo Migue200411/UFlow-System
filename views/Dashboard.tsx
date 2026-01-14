@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { convertToBase } from '../utils';
 import { Card, Money, Badge, Button } from '../components/UIComponents';
@@ -7,32 +7,70 @@ import { ArrowUpRight, ArrowDownLeft, Wallet, CreditCard, Activity, Box, ArrowRi
 export const DashboardView: React.FC = () => {
   const { accounts, transactions, debts, goals, currencyBase, t, reduceMotion } = useApp();
 
-  // Calculations
-  const assets = accounts.reduce((acc, curr) => {
-    const rawBalance = transactions
-      .filter(t => t.accountId === curr.id)
-      .reduce((sum, t) => sum + (t.type === 'income' ? t.amount : t.type === 'expense' ? -t.amount : t.amount), 0);
-    const factor = curr.type === 'shared' ? 0.5 : 1;
-    return acc + convertToBase(rawBalance * factor, curr.currency, currencyBase);
-  }, 0);
+  // --- Optimized Calculations (Memoized) ---
+  const { assets, liabilities, receivables, available, relative, burnRate } = useMemo(() => {
+    
+    // 1. Calculate TOTAL ASSETS (Sum of all transactions converted to Base)
+    // Formula: Sum(convertToBase(tx.amount * sign))
+    let totalAssets = 0;
+    let monthlyExpense = 0;
+    const now = new Date();
+    const currentMonth = now.getMonth();
 
-  const liabilities = debts
-    .filter(d => d.type === 'i_owe' && d.status !== 'paid')
-    .reduce((acc, d) => {
-        const paid = d.payments.reduce((s, p) => s + p.amount, 0);
-        return acc + convertToBase(d.totalAmount - paid, d.currency, currencyBase);
-    }, 0);
+    transactions.forEach(tx => {
+       // Convert amount to Base Currency
+       const amountInBase = convertToBase(tx.amount, tx.currency, currencyBase);
+       
+       // Apply Sign
+       if (tx.type === 'income') {
+         totalAssets += amountInBase;
+       } else if (tx.type === 'expense') {
+         totalAssets -= amountInBase;
+         if (new Date(tx.date).getMonth() === currentMonth) {
+            monthlyExpense += amountInBase;
+         }
+       } else {
+         // Adjustment can be pos/neg depending on amount sign stored, usually signed in DB
+         // Assuming adjustment amount is signed or handling logical adjustments
+         totalAssets += amountInBase; // For now assume simple addition
+       }
+    });
 
-  const receivables = debts
-    .filter(d => d.type === 'owes_me' && d.status !== 'paid')
-    .reduce((acc, d) => {
-        const paid = d.payments.reduce((s, p) => s + p.amount, 0);
-        return acc + convertToBase(d.totalAmount - paid, d.currency, currencyBase);
-    }, 0);
+    // 2. Calculate Liabilities (Debts I owe)
+    const totalLiabilities = debts
+      .filter(d => d.type === 'i_owe' && d.status !== 'paid')
+      .reduce((acc, d) => {
+          const paid = d.payments.reduce((s, p) => s + p.amount, 0);
+          const remaining = d.totalAmount - paid;
+          return acc + convertToBase(remaining, d.currency, currencyBase);
+      }, 0);
 
-  const available = assets - liabilities;
-  const relative = assets + receivables;
-  const recentTx = transactions.slice(0, 8);
+    // 3. Calculate Receivables (Money owed to me)
+    const totalReceivables = debts
+      .filter(d => d.type === 'owes_me' && d.status !== 'paid')
+      .reduce((acc, d) => {
+          const paid = d.payments.reduce((s, p) => s + p.amount, 0);
+          const remaining = d.totalAmount - paid;
+          return acc + convertToBase(remaining, d.currency, currencyBase);
+      }, 0);
+
+    // Simple burn rate calc (mock logic or real)
+    // Assume budget limit 2M COP for demo or 80% utilization
+    const burnRateVal = Math.min((monthlyExpense / 2000000) * 100, 100);
+
+    return {
+        assets: totalAssets,
+        liabilities: totalLiabilities,
+        receivables: totalReceivables,
+        available: totalAssets - totalLiabilities, // Conservative liquidity
+        relative: totalAssets + totalReceivables,  // Optimistic balance
+        burnRate: burnRateVal
+    };
+  }, [accounts, transactions, debts, currencyBase]);
+
+  const recentTx = useMemo(() => {
+      return [...transactions].sort((a,b) => b.createdAt - a.createdAt).slice(0, 8);
+  }, [transactions]);
 
   // Enhanced Sparkline
   const Sparkline = ({ color = "#7C5CFF" }) => (
@@ -66,7 +104,7 @@ export const DashboardView: React.FC = () => {
             </div>
             <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">{title}</span>
         </div>
-        <Badge variant={colorClass.includes('brand') ? 'brand' : colorClass.includes('green') ? 'success' : 'neutral'}>+2.4%</Badge>
+        <Badge variant={colorClass.includes('brand') ? 'brand' : colorClass.includes('green') ? 'success' : 'neutral'}>LIVE</Badge>
       </div>
       
       <div className="flex items-end justify-between z-10">
@@ -91,7 +129,7 @@ export const DashboardView: React.FC = () => {
           amount={assets} 
           icon={Wallet} 
           colorClass="bg-brand-500 text-brand-500" 
-          sub="Global Assets"
+          sub="Global Assets (Base)"
           delay={0}
         />
         <StatCard 
@@ -99,7 +137,7 @@ export const DashboardView: React.FC = () => {
           amount={available} 
           icon={CreditCard} 
           colorClass="bg-green-500 text-green-500"
-          sub="Liquidity"
+          sub="Liquidity (Net Liabilities)"
           delay={100}
         />
         <StatCard 
@@ -107,7 +145,7 @@ export const DashboardView: React.FC = () => {
           amount={relative} 
           icon={Activity} 
           colorClass="bg-blue-500 text-blue-500"
-          sub="Projected"
+          sub="Projected (Incl. Receivables)"
           delay={200}
         />
 
@@ -117,10 +155,10 @@ export const DashboardView: React.FC = () => {
                 <Zap className="w-4 h-4 text-amber-500 fill-amber-500" />
                 <span className="text-[10px] font-bold uppercase text-amber-600 dark:text-amber-500 tracking-widest">{t('dash.burn')}</span>
              </div>
-             <span className="text-xs font-mono font-bold text-amber-600 dark:text-amber-500">75%</span>
+             <span className="text-xs font-mono font-bold text-amber-600 dark:text-amber-500">{burnRate.toFixed(0)}%</span>
           </div>
           <div className="relative h-3 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden shadow-inner">
-             <div className="absolute top-0 left-0 h-full bg-amber-500 w-[75%] rounded-full shadow-[0_0_15px_rgba(245,158,11,0.6)] animate-pulse-slow" />
+             <div className="absolute top-0 left-0 h-full bg-amber-500 rounded-full shadow-[0_0_15px_rgba(245,158,11,0.6)] animate-pulse-slow" style={{ width: `${burnRate}%` }} />
              {/* Striped pattern overlay */}
              <div className="absolute inset-0 w-full h-full opacity-20" style={{backgroundImage: 'linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent)', backgroundSize: '1rem 1rem'}} />
           </div>

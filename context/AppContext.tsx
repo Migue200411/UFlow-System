@@ -11,9 +11,10 @@ import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+// Default state serves as the "Seed" if no local data exists
 const INITIAL_STATE: AppState = {
   user: null,
-  isLoading: true, // Gate closed by default
+  isLoading: true, 
   theme: 'dark',
   language: 'en',
   currencyBase: 'COP',
@@ -27,39 +28,85 @@ const INITIAL_STATE: AppState = {
   budgets: DEMO_BUDGETS,
 };
 
+const STORAGE_KEY = 'uflow_db_v2'; // Bump version to force fresh read/write if schema changes
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<AppState>(INITIAL_STATE);
   const [currentView, setCurrentViewState] = useState<ViewState>('dashboard');
   const [toasts, setToasts] = useState<{ id: string; message: string; type: 'success' | 'error' | 'info' }[]>([]);
   
-  // Ref to prevent double-initialization logic
   const isAuthCheckComplete = useRef(false);
+  const isDataInitialized = useRef(false);
 
-  // --- View Navigation & Persistence ---
+  // --- 1. PERSISTENCE LAYER ---
+  // Load data from LocalStorage on Mount
+  useEffect(() => {
+    const loadLocalData = () => {
+      try {
+        const stored = localStorage.getItem(STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          // Merge stored data with initial structure to ensure type safety
+          setState(prev => ({
+            ...prev,
+            ...parsed,
+            user: prev.user, // Don't overwrite auth user from local storage blindly
+            isLoading: prev.isLoading // Keep loading state separate
+          }));
+        }
+      } catch (e) {
+        console.error("Failed to load local data", e);
+      }
+      isDataInitialized.current = true;
+    };
+
+    if (!isDataInitialized.current) {
+      loadLocalData();
+    }
+  }, []);
+
+  // Save data to LocalStorage whenever critical data changes
+  useEffect(() => {
+    if (!state.isLoading && isDataInitialized.current) {
+      const dataToSave = {
+        theme: state.theme,
+        language: state.language,
+        currencyBase: state.currencyBase,
+        privacyMode: state.privacyMode,
+        showCents: state.showCents,
+        reduceMotion: state.reduceMotion,
+        accounts: state.accounts,
+        transactions: state.transactions,
+        debts: state.debts,
+        goals: state.goals,
+        budgets: state.budgets
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+    }
+  }, [
+    state.theme, state.language, state.currencyBase, state.privacyMode, 
+    state.showCents, state.reduceMotion, state.accounts, state.transactions, 
+    state.debts, state.goals, state.budgets, state.isLoading
+  ]);
+
+  // --- View Navigation & ReturnTo ---
   const setCurrentView = useCallback((view: ViewState) => {
     setCurrentViewState(view);
-    // Persist path for "ReturnTo" functionality
-    try {
-      localStorage.setItem('uflow_last_view', view);
-    } catch (e) { /* ignore */ }
+    localStorage.setItem('uflow_last_view', view);
   }, []);
 
   // --- Toast System ---
   const addToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
     const id = generateId();
     setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 4000);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4000);
   }, []);
 
   const removeToast = useCallback((id: string) => {
     setToasts(prev => prev.filter(t => t.id !== id));
   }, []);
 
-  // --- Core Auth Logic (Non-blocking) ---
-
-  // 1. Load Profile Background Task
+  // --- Auth Logic ---
   const loadFullUserProfile = async (uid: string, baseUser: User) => {
     try {
       const userRef = doc(db, 'users', uid);
@@ -67,19 +114,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (userSnap.exists()) {
         const profile = userSnap.data() as UserProfile;
-        // Merge profile settings into state without disrupting user flow
         setState(prev => ({
           ...prev,
           user: profile,
-          theme: profile.theme,
+          theme: profile.theme, // Sync visual settings from cloud
           language: profile.language,
           currencyBase: profile.currencyBase,
-          privacyMode: profile.privacyMode,
-          showCents: profile.showCents,
-          reduceMotion: profile.reduceMotion,
         }));
       } else {
-        // First time setup - Create Profile in Background
         const newProfile: UserProfile = {
           uid: uid,
           email: baseUser.email,
@@ -97,147 +139,110 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setState(prev => ({ ...prev, user: newProfile }));
       }
     } catch (e) {
-      console.warn("Background profile sync failed:", e);
-      // We don't block the UI here, just log it. The user already has access via the basic object.
+      console.warn("Profile sync error", e);
     }
   };
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
-        // --- AUTH SUCCESS ---
-        
-        // 1. Optimistic UI Update: Allow access IMMEDIATELY using basic firebase data
-        // We do NOT wait for Firestore here. This fixes the "stuck on loading" bug.
         const basicProfile: UserProfile = {
            uid: firebaseUser.uid,
            email: firebaseUser.email,
            displayName: firebaseUser.displayName,
            photoURL: firebaseUser.photoURL,
-           theme: 'dark', // Defaults
-           language: 'en',
-           currencyBase: 'COP',
-           privacyMode: false,
-           showCents: false,
-           reduceMotion: false,
+           theme: state.theme,
+           language: state.language,
+           currencyBase: state.currencyBase,
+           privacyMode: state.privacyMode,
+           showCents: state.showCents,
+           reduceMotion: state.reduceMotion,
         };
 
         setState(prev => ({ 
           ...prev, 
-          user: prev.user?.uid === firebaseUser.uid ? prev.user : basicProfile, // Keep existing if same user to avoid flicker
+          user: prev.user?.uid === firebaseUser.uid ? prev.user : basicProfile,
           isLoading: false 
         }));
 
-        // 2. Handle Redirection (ReturnTo Logic)
         if (!isAuthCheckComplete.current) {
            const lastView = localStorage.getItem('uflow_last_view') as ViewState;
-           if (lastView && ['dashboard','history','analytics','accounts','debts','goals','settings'].includes(lastView)) {
+           if (lastView && ['dashboard','history','analytics','accounts','debts','goals','settings', 'ai-assistant'].includes(lastView)) {
              setCurrentViewState(lastView);
-           } else {
-             setCurrentViewState('dashboard');
            }
            isAuthCheckComplete.current = true;
         }
 
-        // 3. Hydrate Full Profile (Background)
         loadFullUserProfile(firebaseUser.uid, firebaseUser);
 
       } else {
-        // --- LOGGED OUT ---
         localStorage.removeItem('uflow_last_view');
         setState(prev => ({ ...prev, user: null, isLoading: false }));
-        setCurrentViewState('dashboard'); // Reset internal router
+        setCurrentViewState('dashboard');
         isAuthCheckComplete.current = true;
       }
     });
-
     return () => unsubscribe();
   }, []);
 
-  // Apply theme side-effect
   useEffect(() => {
-    if (state.theme === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
+    if (state.theme === 'dark') document.documentElement.classList.add('dark');
+    else document.documentElement.classList.remove('dark');
   }, [state.theme]);
 
-  // --- Actions ---
-
-  const syncProfileSetting = async (updates: Partial<UserProfile>) => {
-    if (!state.user) return;
-    try {
-      const userRef = doc(db, 'users', state.user.uid);
-      await updateDoc(userRef, updates);
-    } catch (e) { /* silent fail */ }
-  };
-
+  // --- State Modifiers (Actions) ---
+  
   const updateState = (updates: Partial<AppState>) => {
     setState(prev => ({ ...prev, ...updates }));
+    // Sync critical profile settings to Firestore if logged in
+    const profileKeys = ['theme', 'language', 'currencyBase', 'privacyMode', 'showCents', 'reduceMotion'];
+    const shouldSync = Object.keys(updates).some(k => profileKeys.includes(k));
     
-    const profileKeys: (keyof UserProfile)[] = ['theme', 'language', 'currencyBase', 'privacyMode', 'showCents', 'reduceMotion'];
-    const profileUpdates: Partial<UserProfile> = {};
-    let hasProfileUpdate = false;
-    
-    Object.keys(updates).forEach(key => {
-        if (profileKeys.includes(key as keyof UserProfile)) {
-            (profileUpdates as any)[key] = (updates as any)[key];
-            hasProfileUpdate = true;
-        }
-    });
-
-    if (hasProfileUpdate && state.user) {
-        syncProfileSetting(profileUpdates);
+    if (shouldSync && state.user) {
+        const profileUpdates = {};
+        Object.keys(updates).forEach(k => {
+            if (profileKeys.includes(k)) (profileUpdates as any)[k] = (updates as any)[k];
+        });
+        const userRef = doc(db, 'users', state.user.uid);
+        updateDoc(userRef, profileUpdates).catch(() => {});
     }
   };
 
   const login = async (email: string, pass: string) => {
-    // We let onAuthStateChanged handle the state update. We just trigger the action.
-    try {
-      await signInWithEmailAndPassword(auth, email, pass);
-      addToast("Credentials Accepted", "success");
-    } catch (e: any) {
-      throw e; // AuthView handles the error display
-    }
+    try { await signInWithEmailAndPassword(auth, email, pass); addToast("Credentials Accepted", "success"); } 
+    catch (e) { throw e; }
   };
 
   const register = async (email: string, pass: string, name: string) => {
-    try {
+    try { 
       const res = await createUserWithEmailAndPassword(auth, email, pass);
       await updateProfile(res.user, { displayName: name });
       addToast("Identity Generated", "success");
-    } catch (e: any) {
-      throw e;
-    }
+    } catch (e) { throw e; }
   };
 
   const loginWithGoogle = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-      addToast("Biometric Auth Verified", "success");
-    } catch (e) {
-      addToast("External Auth Failed", "error");
-      throw e;
-    }
+    try { await signInWithPopup(auth, googleProvider); addToast("Biometric Auth Verified", "success"); } 
+    catch (e) { addToast("Auth Failed", "error"); throw e; }
   };
 
   const logout = async () => {
-    try {
-      await signOut(auth);
-      localStorage.removeItem('uflow_last_view');
-      // State reset handled by onAuthStateChanged
-      addToast("Session Ended", "info");
-    } catch (e) {
-      console.error(e);
-    }
+    await signOut(auth);
+    addToast("Session Ended", "info");
   };
 
-  // --- CRUD Data Logic (Local Demo Persistence) ---
-  
+  // --- CRUD Actions (Immutable Updates) ---
+
   const addTransaction = useCallback((tx: Omit<Transaction, 'id' | 'createdAt'>) => {
-    const newTx: Transaction = { ...tx, id: generateId(), createdAt: Date.now() };
-    setState(prev => ({ ...prev, transactions: [newTx, ...prev.transactions] }));
+    const newTx: Transaction = { 
+      ...tx, 
+      id: generateId(), 
+      createdAt: Date.now() 
+    };
+    setState(prev => ({ 
+      ...prev, 
+      transactions: [newTx, ...prev.transactions] 
+    }));
     addToast('Record Saved', 'success');
   }, [addToast]);
 
@@ -282,10 +287,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [addToast]);
 
   const resetData = useCallback(() => {
-    localStorage.removeItem('uflow_data_v1');
+    localStorage.removeItem(STORAGE_KEY);
     setState(prev => ({ ...prev, accounts: DEMO_ACCOUNTS, transactions: DEMO_TRANSACTIONS, debts: DEMO_DEBTS, goals: DEMO_GOALS }));
-    window.location.reload();
-  }, []);
+    addToast('Factory Reset Complete', 'info');
+    setTimeout(() => window.location.reload(), 1000);
+  }, [addToast]);
 
   const t = useCallback((key: string) => {
     const dict = TRANSLATIONS[state.language] || TRANSLATIONS.en;
@@ -294,10 +300,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const value = {
     ...state,
-    login,
-    register,
-    loginWithGoogle,
-    logout,
+    login, register, loginWithGoogle, logout,
     setTheme: (theme: Theme) => updateState({ theme }),
     setLanguage: (language: Language) => updateState({ language }),
     setCurrencyBase: (currencyBase: Currency) => updateState({ currencyBase }),
@@ -306,17 +309,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     toggleReduceMotion: () => updateState({ reduceMotion: !state.reduceMotion }),
     setView: setCurrentView,
     currentView,
-    addTransaction,
-    addAccount,
-    addDebt,
-    addGoal,
-    updateGoal,
-    payDebt,
-    resetData,
-    t,
-    addToast,
-    removeToast,
-    toasts
+    addTransaction, addAccount, addDebt, addGoal, updateGoal, payDebt, resetData, t,
+    addToast, removeToast, toasts
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
