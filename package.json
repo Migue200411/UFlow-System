@@ -4,20 +4,24 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "concurrently \"vite\" \"cd server && npm start\"",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "firebase": "^12.7.0",
+    "lucide-react": "^0.562.0",
     "react": "^19.2.3",
     "react-dom": "^19.2.3",
-    "recharts": "^3.6.0",
-    "lucide-react": "^0.562.0",
-    "firebase": "^12.7.0"
+    "recharts": "^3.6.0"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
+    "@netlify/functions": "^5.1.2",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.1",
+    "netlify-cli": "^23.13.3",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
   }

@@ -10,7 +10,7 @@ export const formatCurrency = (
   showCents: boolean
 ): string => {
   const isCOP = currency === 'COP';
-  
+
   const options: Intl.NumberFormatOptions = {
     style: 'currency',
     currency: currency,
@@ -19,14 +19,14 @@ export const formatCurrency = (
   };
 
   const locale = lang === 'es' ? 'es-CO' : 'en-US';
-  
+
   try {
     const formatter = new Intl.NumberFormat(locale, options);
     let formatted = formatter.format(amount);
-    
+
     // Aesthetic fix for COP in English locale
     if (lang === 'en' && isCOP && !formatted.includes('COP')) {
-        formatted = `COP ${formatted}`;
+      formatted = `COP ${formatted}`;
     }
 
     return formatted;
@@ -37,14 +37,14 @@ export const formatCurrency = (
 
 export const convertToBase = (amount: number, from: Currency, base: Currency): number => {
   if (from === base) return amount;
-  
+
   // Convert FROM to COP first (Normalized)
   const rateFrom = FX_RATES[from as keyof typeof FX_RATES] || 1;
   const amountInCOP = amount * rateFrom;
-  
+
   // If Base is COP, we are done
   if (base === 'COP') return amountInCOP;
-  
+
   // If Base is other (e.g. USD), convert COP to Base
   const rateBase = FX_RATES[base as keyof typeof FX_RATES] || 1;
   return amountInCOP / rateBase;
@@ -56,7 +56,9 @@ export const cn = (...classes: (string | undefined | null | false)[]) => {
 
 export const generateId = () => Math.random().toString(36).substring(2, 9);
 
-// --- AI ENGINE V4: NLP PARSER & ANALYST ---
+// --- AI ENGINE V5: CLAUDE API + LOCAL FALLBACK ---
+
+import { callClaudeAPI } from './claude-service';
 
 interface AIResponse {
   text: string;
@@ -67,6 +69,9 @@ interface AIResponse {
     data: any;
   };
 }
+
+// Flag to track if Claude is available
+let claudeAvailable: boolean | null = null;
 
 // 1. Dictionaries & Maps (EXPANDED)
 const CATEGORY_MAP: Record<string, string[]> = {
@@ -93,10 +98,10 @@ const detectLanguage = (text: string, defaultLang: Language): Language => {
   const lower = text.toLowerCase();
   const esWords = ['que', 'el', 'la', 'en', 'un', 'una', 'gasté', 'pagué', 'hoy', 'ayer', 'mañana', 'cuanto'];
   const enWords = ['the', 'in', 'on', 'a', 'an', 'spent', 'paid', 'today', 'yesterday', 'tomorrow', 'how'];
-  
+
   let esScore = 0;
   let enScore = 0;
-  
+
   esWords.forEach(w => { if (new RegExp(`\\b${w}\\b`).test(lower)) esScore++; });
   enWords.forEach(w => { if (new RegExp(`\\b${w}\\b`).test(lower)) enScore++; });
 
@@ -106,31 +111,46 @@ const detectLanguage = (text: string, defaultLang: Language): Language => {
 };
 
 const extractAmount = (text: string, lang: Language): number => {
-  const regex = /[\$]?(?:[A-Z]{3})?\s*(\d+[.,\d]*)\s*(k|m|mil|millon|millones)?/i;
-  const match = text.match(regex);
-  if (!match) return 0;
+  const lower = text.toLowerCase();
 
-  let raw = match[1];
-  let val = 0;
+  // Pattern for Colombian format: "300mil", "300 mil", "50k", "2 millones", "1.5M", "2 palos"
+  // Important: "300mil" = 300 * 1000 = 300,000 (NOT 300 million!)
 
-  if (lang === 'es') {
-    if (raw.includes('.') && !raw.includes(',')) {
-       if (/\.\d{3}\b/.test(raw)) val = parseFloat(raw.replace(/\./g, '')); 
-       else val = parseFloat(raw); 
-    } else if (raw.includes(',') && !raw.includes('.')) {
-       val = parseFloat(raw.replace(',', '.'));
-    } else {
-       val = parseFloat(raw.replace(/\./g, '').replace(',', '.'));
+  // Try pattern with suffix attached: "300mil", "50k"
+  const attachedMatch = lower.match(/(\d+(?:[.,]\d+)?)\s*(mil|k|millon|millones|m|palo|palos)\b/i);
+  if (attachedMatch) {
+    let val = parseFloat(attachedMatch[1].replace(',', '.'));
+    const suffix = attachedMatch[2].toLowerCase();
+
+    if (suffix === 'mil' || suffix === 'k') {
+      val *= 1000;
+    } else if (['millon', 'millones', 'm', 'palo', 'palos'].includes(suffix)) {
+      val *= 1000000;
     }
-  } else {
-    val = parseFloat(raw.replace(/,/g, ''));
+    return Math.round(val);
   }
 
-  const suffix = match[2]?.toLowerCase();
-  if (suffix === 'k' || suffix === 'mil') val *= 1000;
-  if (['m', 'millon', 'millones'].includes(suffix || '')) val *= 1000000;
+  // Try pattern with space: "300 mil", "2 millones"
+  const spacedMatch = lower.match(/(\d+(?:[.,]\d+)?)\s+(mil|k|millon|millones|m|palo|palos)\b/i);
+  if (spacedMatch) {
+    let val = parseFloat(spacedMatch[1].replace(',', '.'));
+    const suffix = spacedMatch[2].toLowerCase();
 
-  return val;
+    if (suffix === 'mil' || suffix === 'k') {
+      val *= 1000;
+    } else if (['millon', 'millones', 'm', 'palo', 'palos'].includes(suffix)) {
+      val *= 1000000;
+    }
+    return Math.round(val);
+  }
+
+  // Plain number without suffix
+  const plainMatch = lower.match(/(\d+(?:[.,]\d+)?)/);
+  if (plainMatch) {
+    return Math.round(parseFloat(plainMatch[1].replace(',', '.')));
+  }
+
+  return 0;
 };
 
 const extractCurrency = (text: string, defaultCurr: Currency, lang: Language): Currency => {
@@ -139,13 +159,13 @@ const extractCurrency = (text: string, defaultCurr: Currency, lang: Language): C
   if (lower.includes('usd') || lower.includes('dolar') || lower.includes('dollar') || lower.includes('us$')) return 'USD';
   if (lower.includes('eur') || lower.includes('euro')) return 'EUR';
   if (lower.includes('cop') || lower.includes('peso')) return 'COP';
-  
+
   // Ambiguous '$' inference based on context language
   if (lower.includes('$')) {
     if (lang === 'en') return 'USD';
     if (lang === 'es') return 'COP'; // Default for ES usually COP in this context
   }
-  
+
   return defaultCurr;
 };
 
@@ -159,102 +179,168 @@ const extractCategory = (text: string): string => {
 
 const extractDate = (text: string): string => {
   const lower = text.toLowerCase();
-  const date = new Date();
-  
-  if (lower.includes('yesterday') || lower.includes('ayer') || lower.includes('anoche')) {
-    date.setDate(date.getDate() - 1);
-  } else if (lower.includes('antier') || lower.includes('before yesterday')) {
-    date.setDate(date.getDate() - 2);
-  } else if (lower.includes('tomorrow') || lower.includes('mañana')) {
-    date.setDate(date.getDate() + 1);
-  } else {
-    // Check for "hace X días" / "X days ago"
-    const agoMatch = lower.match(/(?:hace|ago)\s+(\d+)\s+(?:dias|days)/);
-    if (agoMatch) {
-       date.setDate(date.getDate() - parseInt(agoMatch[1]));
+  const now = new Date();
+  const dayOfWeek = now.getDay(); // 0 = Sunday
+
+  // Day names mapping (Spanish)
+  const dayNames: Record<string, number> = {
+    'domingo': 0, 'lunes': 1, 'martes': 2, 'miercoles': 3, 'miércoles': 3,
+    'jueves': 4, 'viernes': 5, 'sabado': 6, 'sábado': 6
+  };
+
+  // Check for specific day names: "el domingo", "el sábado", etc.
+  for (const [dayName, targetDay] of Object.entries(dayNames)) {
+    if (lower.includes(dayName)) {
+      // Calculate days ago for the most recent occurrence
+      let daysAgo = (dayOfWeek - targetDay + 7) % 7;
+      if (daysAgo === 0) daysAgo = 7; // If same day, assume last week
+
+      const date = new Date(now);
+      date.setDate(now.getDate() - daysAgo);
+      date.setHours(12, 0, 0, 0); // Set to noon to avoid timezone issues
+      return date.toISOString();
     }
   }
-  return date.toISOString();
+
+  // Check for ayer, anteayer
+  if (lower.includes('ayer') || lower.includes('anoche')) {
+    const date = new Date(now);
+    date.setDate(now.getDate() - 1);
+    date.setHours(12, 0, 0, 0);
+    return date.toISOString();
+  }
+
+  if (lower.includes('antier') || lower.includes('anteayer')) {
+    const date = new Date(now);
+    date.setDate(now.getDate() - 2);
+    date.setHours(12, 0, 0, 0);
+    return date.toISOString();
+  }
+
+  // Check for "hace X días"
+  const agoMatch = lower.match(/hace\s+(\d+)\s*d[ií]as?/);
+  if (agoMatch) {
+    const date = new Date(now);
+    date.setDate(now.getDate() - parseInt(agoMatch[1]));
+    date.setHours(12, 0, 0, 0);
+    return date.toISOString();
+  }
+
+  // Default: today at noon
+  now.setHours(12, 0, 0, 0);
+  return now.toISOString();
 };
 
 // --- ANALYSIS LOGIC ---
 const generateAnalysis = (prompt: string, context: AppContextType, lang: Language): string => {
-   const lower = prompt.toLowerCase();
-   const { transactions, currencyBase } = context;
+  const lower = prompt.toLowerCase();
+  const { transactions, currencyBase } = context;
 
-   // 1. "How much spent on X"
-   const catMatch = Object.keys(CATEGORY_MAP).find(c => lower.includes(c.toLowerCase()) || CATEGORY_MAP[c].some(k => lower.includes(k)));
-   if (catMatch && (lower.includes('gast') || lower.includes('spent') || lower.includes('much') || lower.includes('cuanto'))) {
-      const total = transactions
-        .filter(t => t.type === 'expense' && t.category === catMatch)
-        .reduce((sum, t) => sum + convertToBase(t.amount, t.currency, currencyBase), 0);
-      
-      return lang === 'es' 
-        ? `Has gastado un total aproximado de ${formatCurrency(total, currencyBase, 'es', false)} en ${catMatch} históricamente.`
-        : `You have spent approximately ${formatCurrency(total, currencyBase, 'en', false)} on ${catMatch} historically.`;
-   }
+  // 1. "How much spent on X"
+  const catMatch = Object.keys(CATEGORY_MAP).find(c => lower.includes(c.toLowerCase()) || CATEGORY_MAP[c].some(k => lower.includes(k)));
+  if (catMatch && (lower.includes('gast') || lower.includes('spent') || lower.includes('much') || lower.includes('cuanto'))) {
+    const total = transactions
+      .filter(t => t.type === 'expense' && t.category === catMatch)
+      .reduce((sum, t) => sum + convertToBase(t.amount, t.currency, currencyBase), 0);
 
-   // 2. "Top Expenses"
-   if (lower.includes('top') || lower.includes('mayor') || lower.includes('highest') || lower.includes('mas')) {
-       // Simple aggregation
-       const catTotals: Record<string, number> = {};
-       transactions.filter(t => t.type === 'expense').forEach(t => {
-          const val = convertToBase(t.amount, t.currency, currencyBase);
-          catTotals[t.category] = (catTotals[t.category] || 0) + val;
-       });
-       const sorted = Object.entries(catTotals).sort((a,b) => b[1] - a[1]).slice(0, 3);
-       
-       if (sorted.length === 0) return lang === 'es' ? "No hay suficientes datos." : "Not enough data.";
+    return lang === 'es'
+      ? `Has gastado un total aproximado de ${formatCurrency(total, currencyBase, 'es', false)} en ${catMatch} históricamente.`
+      : `You have spent approximately ${formatCurrency(total, currencyBase, 'en', false)} on ${catMatch} historically.`;
+  }
 
-       const list = sorted.map(([c, v]) => `- ${c}: ${formatCurrency(v, currencyBase, lang, false)}`).join('\n');
-       return lang === 'es' 
-         ? `Tus mayores gastos son:\n${list}`
-         : `Your top expenses are:\n${list}`;
-   }
+  // 2. "Top Expenses"
+  if (lower.includes('top') || lower.includes('mayor') || lower.includes('highest') || lower.includes('mas')) {
+    // Simple aggregation
+    const catTotals: Record<string, number> = {};
+    transactions.filter(t => t.type === 'expense').forEach(t => {
+      const val = convertToBase(t.amount, t.currency, currencyBase);
+      catTotals[t.category] = (catTotals[t.category] || 0) + val;
+    });
+    const sorted = Object.entries(catTotals).sort((a, b) => b[1] - a[1]).slice(0, 3);
 
-   // 3. General Advice
-   if (lower.includes('consejo') || lower.includes('advice') || lower.includes('ahorro') || lower.includes('save')) {
-      return lang === 'es'
-        ? "Basado en tus datos: Intenta reducir gastos en 'Entertainment' y revisa tus suscripciones recurrentes. Podrías ahorrar un 15% más este mes."
-        : "Based on your data: Try cutting down on 'Entertainment' and check recurring subscriptions. You could save 15% more this month.";
-   }
+    if (sorted.length === 0) return lang === 'es' ? "No hay suficientes datos." : "Not enough data.";
 
-   return lang === 'es' 
-     ? "Puedo analizar tus gastos. Prueba: '¿Cuánto gasté en comida?' o 'Dime mis mayores gastos'."
-     : "I can analyze your spending. Try: 'How much did I spend on food?' or 'Top expenses'.";
+    const list = sorted.map(([c, v]) => `- ${c}: ${formatCurrency(v, currencyBase, lang, false)}`).join('\n');
+    return lang === 'es'
+      ? `Tus mayores gastos son:\n${list}`
+      : `Your top expenses are:\n${list}`;
+  }
+
+  // 3. General Advice
+  if (lower.includes('consejo') || lower.includes('advice') || lower.includes('ahorro') || lower.includes('save')) {
+    return lang === 'es'
+      ? "Basado en tus datos: Intenta reducir gastos en 'Entertainment' y revisa tus suscripciones recurrentes. Podrías ahorrar un 15% más este mes."
+      : "Based on your data: Try cutting down on 'Entertainment' and check recurring subscriptions. You could save 15% more this month.";
+  }
+
+  return lang === 'es'
+    ? "Puedo analizar tus gastos. Prueba: '¿Cuánto gasté en comida?' o 'Dime mis mayores gastos'."
+    : "I can analyze your spending. Try: 'How much did I spend on food?' or 'Top expenses'.";
 };
 
 
-// 3. Main Processor
-export const processAICommand = (prompt: string, context: AppContextType): Promise<AIResponse> => {
+// Message type for conversation history
+interface ConversationMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+// 3. Main Processor - Now with Claude API + Local Fallback
+export const processAICommand = async (
+  prompt: string,
+  context: AppContextType,
+  messages: ConversationMessage[] = [],
+  previousSummary?: string
+): Promise<AIResponse> => {
+  // Try Claude API first
+  if (claudeAvailable !== false) {
+    try {
+      const claudeResponse = await callClaudeAPI(prompt, context, messages, previousSummary);
+
+      // If we got a valid response, mark Claude as available
+      if (claudeResponse.intent !== 'unknown' || !claudeResponse.text.includes('Error')) {
+        claudeAvailable = true;
+
+        // Ensure date is properly formatted for transactions
+        if (claudeResponse.structured?.type === 'transaction' && claudeResponse.structured.data) {
+          const data = claudeResponse.structured.data;
+          if (!data.date) {
+            data.date = new Date().toISOString();
+          }
+          if (!data.accountId && context.accounts.length > 0) {
+            data.accountId = context.accounts[0].id;
+          }
+        }
+
+        return claudeResponse;
+      }
+    } catch (error) {
+      console.warn('Claude API unavailable, falling back to local NLP:', error);
+      claudeAvailable = false;
+    }
+  }
+
+  // Fallback to local NLP processing
   return new Promise((resolve) => {
-    // Artificial Delay
     setTimeout(() => {
       const lower = prompt.toLowerCase();
       const lang = detectLanguage(prompt, context.language);
-      
+
       // -- A. Detect Intent --
-      // Is it a creation command?
-      const isGoal = ['goal', 'meta', 'ahorro', 'save', 'objetivo'].some(k => lower.includes(k) && /\d/.test(prompt)); // Must have number to be creation
+      const isGoal = ['goal', 'meta', 'ahorro', 'save', 'objetivo'].some(k => lower.includes(k) && /\d/.test(prompt));
       let isIncome = INCOME_KEYWORDS.some(k => lower.includes(k));
       let isExpense = EXPENSE_KEYWORDS.some(k => lower.includes(k));
       const hasAmount = /\d/.test(prompt);
 
-      // Conflict resolution: "Salary" can be category or keyword. 
       if (lower.includes('salary') || lower.includes('nomina') || lower.includes('sueldo')) isIncome = true;
 
-      // Analysis Intent detection
-      const isAnalysis = ANALYSIS_KEYWORDS.some(k => lower.includes(k)) && !hasAmount; // If no amount, likely a question
-      
+      const isAnalysis = ANALYSIS_KEYWORDS.some(k => lower.includes(k)) && !hasAmount;
+
       // -- B. Handle Analysis / Query --
       if (isAnalysis || (!isIncome && !isExpense && !isGoal && !hasAmount)) {
-         const analysisText = generateAnalysis(prompt, context, lang);
-         resolve({
-            text: analysisText,
-            lang,
-            intent: 'query'
-         });
-         return;
+        const analysisText = generateAnalysis(prompt, context, lang);
+        resolve({ text: analysisText, lang, intent: 'query' });
+        return;
       }
 
       // -- C. Handle Creation (Goal) --
@@ -283,34 +369,27 @@ export const processAICommand = (prompt: string, context: AppContextType): Promi
       }
 
       // -- D. Handle Creation (Transaction) --
-      if ((isIncome || isExpense || hasAmount)) {
+      if (isIncome || isExpense || hasAmount) {
         const amount = extractAmount(prompt, lang);
-        
-        // If amount is 0/NaN, probably not a transaction command
+
         if (!amount) {
-           resolve({ 
-             text: lang === 'es' 
-               ? "Entendí que quieres registrar algo, pero me falta el monto. Ej: 'Gasté 20k'." 
-               : "I understand you want to record something, but I'm missing the amount. Ex: 'Spent 20k'.", 
-             lang,
-             intent: 'unknown'
-           });
-           return;
+          resolve({
+            text: lang === 'es'
+              ? "Entendí que quieres registrar algo, pero me falta el monto. Ej: 'Gasté 20k'."
+              : "I understand you want to record something, but I'm missing the amount. Ex: 'Spent 20k'.",
+            lang,
+            intent: 'unknown'
+          });
+          return;
         }
 
-        // Determine Type (Default to Expense if ambiguous but has numbers)
         let type: TransactionType = 'expense';
         if (isIncome) type = 'income';
-        else if (isExpense) type = 'expense';
-        else if (hasAmount) type = 'expense'; // Fallback
 
         const category = extractCategory(prompt);
-        // Force Salary/Business for Income if generic
-        const finalCategory = (type === 'income' && category === 'Misc') 
-            ? (lower.includes('cliente') ? 'Business' : 'Salary') 
-            : category;
-        
-        const currency = extractCurrency(prompt, context.currencyBase, lang);
+        const finalCategory = (type === 'income' && category === 'Misc')
+          ? (lower.includes('cliente') ? 'Business' : 'Salary')
+          : category;
 
         resolve({
           text: lang === 'es' ? `He preparado el ${type === 'income' ? 'ingreso' : 'gasto'}. ¿Confirmas?` : `I've drafted the ${type}. Confirm?`,
@@ -321,7 +400,7 @@ export const processAICommand = (prompt: string, context: AppContextType): Promi
             data: {
               type,
               amount,
-              currency,
+              currency: extractCurrency(prompt, context.currencyBase, lang),
               category: finalCategory,
               accountId: context.accounts[0]?.id,
               note: 'Created with AI',
@@ -333,13 +412,13 @@ export const processAICommand = (prompt: string, context: AppContextType): Promi
       }
 
       resolve({
-        text: lang === 'es' 
-          ? "No estoy seguro. Para crear, di 'Gasté 50k'. Para consejos, ve al Asistente." 
+        text: lang === 'es'
+          ? "No estoy seguro. Para crear, di 'Gasté 50k'. Para consejos, ve al Asistente."
           : "Not sure. To create, say 'Spent 50k'. For advice, use the Assistant.",
         lang,
         intent: 'unknown'
       });
 
-    }, 600);
+    }, 300);
   });
 };

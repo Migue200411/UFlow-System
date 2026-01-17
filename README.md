@@ -10,11 +10,33 @@ View your app in AI Studio: https://ai.studio/apps/drive/1ljArjlcqt0ZE4wm7o2emIx
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
+**Prerequisites:** Node.js
 
+### 1. Install dependencies
+```bash
+npm install
+cd server && npm install
+```
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+### 2. Configure Claude AI (optional)
+Copy the environment template and add your API key:
+```bash
+cd server
+cp .env.example .env
+# Edit .env and add your ANTHROPIC_API_KEY
+```
+
+> **Note:** Without Claude API, the app uses local NLP (keyword matching). With Claude, you get real AI responses.
+
+### 3. Start the servers
+**Terminal 1 - Claude Proxy (optional):**
+```bash
+cd server && npm start
+```
+
+**Terminal 2 - Main App:**
+```bash
+npm run dev
+```
+
+The app runs at `http://localhost:3000`
