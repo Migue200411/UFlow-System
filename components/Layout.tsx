@@ -148,7 +148,7 @@ const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () =
     if (!prompt.trim()) return;
     setIsLoading(true);
     try {
-      const response = await processAICommand(prompt, context);
+      const response = await processAICommand(prompt, context, [], undefined, true);
       
       // Strict role enforcement
       if (response.intent === 'query') {

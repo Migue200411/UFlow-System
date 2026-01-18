@@ -420,9 +420,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const resetData = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
     setState(prev => ({ ...prev, accounts: DEMO_ACCOUNTS, transactions: DEMO_TRANSACTIONS, debts: DEMO_DEBTS, goals: DEMO_GOALS }));
-    addToast('Factory Reset Complete', 'info');
+    addToast(state.language === 'es' ? 'Reinicio de fábrica completado' : 'Factory Reset Complete', 'info');
     setTimeout(() => window.location.reload(), 1000);
-  }, [addToast]);
+  }, [addToast, state.language]);
 
   const t = useCallback((key: string) => {
     const dict = TRANSLATIONS[state.language] || TRANSLATIONS.en;

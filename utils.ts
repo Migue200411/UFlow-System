@@ -230,12 +230,13 @@ export const processAICommand = async (
   prompt: string,
   context: AppContextType,
   messages: ConversationMessage[] = [],
-  previousSummary?: string
+  previousSummary?: string,
+  forceCreate?: boolean
 ): Promise<AIResponse> => {
   // Try Claude API first
   if (claudeAvailable !== false) {
     try {
-      const claudeResponse = await callClaudeAPI(prompt, context, messages, previousSummary);
+      const claudeResponse = await callClaudeAPI(prompt, context, messages, previousSummary, forceCreate);
 
       // If we got a valid response, mark Claude as available
       if (claudeResponse.intent !== 'unknown' || !claudeResponse.text.includes('Error')) {

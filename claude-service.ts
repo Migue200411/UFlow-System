@@ -26,7 +26,8 @@ export const callClaudeAPI = async (
     prompt: string,
     context: AppContextType,
     messages: AIMessage[] = [],
-    previousSummary?: string
+    previousSummary?: string,
+    forceCreate?: boolean
 ): Promise<AIResponse> => {
     try {
         const response = await fetch(CLAUDE_API_URL, {
@@ -41,7 +42,8 @@ export const callClaudeAPI = async (
                     accounts: context.accounts,
                 },
                 messages,
-                previousSummary
+                previousSummary,
+                forceCreate
             })
         });
 

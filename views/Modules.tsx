@@ -342,15 +342,17 @@ export const AnalyticsView = () => {
         <h2 className="text-2xl font-bold text-zinc-900 dark:text-white">
           {language === 'es' ? 'Análisis Financiero' : 'Financial Analytics'}
         </h2>
-        <Select
-          value={`${selectedMonth.year}-${selectedMonth.month}`}
-          onChange={(val) => {
-            const [year, month] = val.split('-').map(Number);
-            setSelectedMonth({ year, month });
-          }}
-          options={monthOptions.map(opt => ({ value: opt.value, label: opt.label }))}
-          className="w-40"
-        />
+        <div className="w-auto">
+          <Select
+            value={`${selectedMonth.year}-${selectedMonth.month}`}
+            onChange={(val) => {
+              const [year, month] = val.split('-').map(Number);
+              setSelectedMonth({ year, month });
+            }}
+            options={monthOptions.map(opt => ({ value: opt.value, label: opt.label }))}
+            className="!w-auto min-w-[180px]"
+          />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -1149,14 +1151,16 @@ export const SettingsView = () => {
           <Shield className="w-5 h-5" /> {t('set.zone')}
         </h3>
         <p className="text-sm text-zinc-600 dark:text-zinc-400 mb-6">
-          Perform advanced actions. Be careful, some actions like factory reset cannot be undone.
+          {language === 'es' 
+            ? 'Realiza acciones avanzadas. Ten cuidado, algunas acciones como el reinicio de fábrica no se pueden deshacer.'
+            : 'Perform advanced actions. Be careful, some actions like factory reset cannot be undone.'}
         </p>
         <div className="flex flex-wrap gap-4">
           <Button variant="secondary" onClick={logout} className="border-red-200 dark:border-red-900/30 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400">
-            <LogOut className="w-4 h-4" /> Log Out
+            <LogOut className="w-4 h-4" /> {language === 'es' ? 'Cerrar Sesión' : 'Log Out'}
           </Button>
-          <Button variant="danger" onClick={() => { if (window.confirm('Are you sure? This will wipe all local data.')) resetData() }}>
-            Factory Reset Data
+          <Button variant="danger" onClick={() => { if (window.confirm(language === 'es' ? '¿Estás seguro? Esto borrará todos los datos locales.' : 'Are you sure? This will wipe all local data.')) resetData() }}>
+            {language === 'es' ? 'Reinicio de Fábrica' : 'Factory Reset Data'}
           </Button>
         </div>
       </Card>
