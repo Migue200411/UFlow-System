@@ -222,18 +222,6 @@ export const AuthView: React.FC = () => {
         <div className="text-center mt-8 text-[10px] text-zinc-600 font-mono tracking-wide">
            ENCRYPTED CONNECTION • SYSTEM V2.4
         </div>
-
-        {/* --- DEBUG PANEL (Only for Dev) --- */}
-        {process.env.NODE_ENV !== 'production' && (
-           <div className="mt-8 p-4 rounded-xl bg-black/40 border border-white/5 w-full font-mono text-[9px] text-zinc-500 space-y-1">
-              <div className="flex items-center gap-2 text-zinc-400 mb-2"><Bug className="w-3 h-3"/> DEBUG MONITOR</div>
-              <div className="flex justify-between"><span>Email Valid:</span> <span className={isValidEmail ? "text-green-500" : "text-red-500"}>{String(isValidEmail)}</span></div>
-              <div className="flex justify-between"><span>Pass Valid (&gt;=6):</span> <span className={isValidPass ? "text-green-500" : "text-red-500"}>{String(isValidPass)}</span></div>
-              <div className="flex justify-between"><span>Is Loading:</span> <span className={isLoading ? "text-amber-500" : "text-zinc-500"}>{String(isLoading)}</span></div>
-              <div className="flex justify-between"><span>Can Submit:</span> <span className={canSubmit ? "text-green-500 font-bold" : "text-red-500"}>{String(canSubmit)}</span></div>
-           </div>
-        )}
-
       </div>
     </div>
   );
