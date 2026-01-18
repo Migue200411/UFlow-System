@@ -27,7 +27,9 @@ export interface Account {
   name: string;
   type: 'individual' | 'shared';
   currency: Currency;
+  initialBalance?: number;
   members?: string[]; // For demo
+  ownerId?: string; // User who created the account
 }
 
 export interface Transaction {
@@ -119,7 +121,10 @@ export interface AppContextType extends AppState {
   currentView: ViewState;
   addTransaction: (tx: Omit<Transaction, 'id' | 'createdAt'>) => void;
   addAccount: (acc: Omit<Account, 'id'>) => void;
+  deleteAccount: (id: string) => void;
+  updateAccount: (id: string, data: Partial<Account>) => void;
   addDebt: (debt: Omit<Debt, 'id' | 'payments' | 'createdAt'>) => void;
+  deleteDebt: (id: string) => void;
   addGoal: (goal: Omit<Goal, 'id'>) => void;
   updateGoal: (id: string, amount: number) => void;
   payDebt: (id: string, amount: number) => void;

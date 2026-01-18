@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
-import { 
-  AppContextType, AppState, Theme, Language, Currency, ViewState, 
-  Transaction, Account, Debt, Goal, UserProfile 
+import {
+  AppContextType, AppState, Theme, Language, Currency, ViewState,
+  Transaction, Account, Debt, Goal, UserProfile
 } from '../types';
 import { DEMO_ACCOUNTS, DEMO_BUDGETS, DEMO_DEBTS, DEMO_GOALS, DEMO_TRANSACTIONS, TRANSLATIONS } from '../constants';
 import { generateId } from '../utils';
@@ -14,7 +14,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 // Default state serves as the "Seed" if no local data exists
 const INITIAL_STATE: AppState = {
   user: null,
-  isLoading: true, 
+  isLoading: true,
   theme: 'dark',
   language: 'en',
   currencyBase: 'COP',
@@ -34,9 +34,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [state, setState] = useState<AppState>(INITIAL_STATE);
   const [currentView, setCurrentViewState] = useState<ViewState>('dashboard');
   const [toasts, setToasts] = useState<{ id: string; message: string; type: 'success' | 'error' | 'info' }[]>([]);
-  
+
   const isAuthCheckComplete = useRef(false);
   const isDataInitialized = useRef(false);
+  const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastSavedDataRef = useRef<string>('');
 
   // --- 1. PERSISTENCE LAYER ---
   // Load data from LocalStorage on Mount
@@ -65,28 +67,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  // Save data to LocalStorage whenever critical data changes
+  // Save data to LocalStorage and Firestore whenever critical data changes
   useEffect(() => {
     if (!state.isLoading && isDataInitialized.current) {
       const dataToSave = {
-        theme: state.theme,
-        language: state.language,
-        currencyBase: state.currencyBase,
-        privacyMode: state.privacyMode,
-        showCents: state.showCents,
-        reduceMotion: state.reduceMotion,
         accounts: state.accounts,
         transactions: state.transactions,
         debts: state.debts,
         goals: state.goals,
         budgets: state.budgets
       };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(dataToSave));
+
+      // Always save to localStorage (cache/offline)
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        ...dataToSave,
+        theme: state.theme,
+        language: state.language,
+        currencyBase: state.currencyBase,
+        privacyMode: state.privacyMode,
+        showCents: state.showCents,
+        reduceMotion: state.reduceMotion,
+      }));
+
+      // Save to Firestore if user is logged in (debounced)
+      if (state.user?.uid) {
+        const dataString = JSON.stringify(dataToSave);
+
+        // Skip if data hasn't changed
+        if (dataString === lastSavedDataRef.current) return;
+
+        // Clear existing timeout
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+        }
+
+        // Debounced save (1 second delay)
+        saveTimeoutRef.current = setTimeout(async () => {
+          try {
+            const dataRef = doc(db, 'users', state.user!.uid, 'appData', 'main');
+            await setDoc(dataRef, dataToSave, { merge: true });
+            lastSavedDataRef.current = dataString;
+          } catch (e) {
+            // Silent fail - data is cached in localStorage
+          }
+        }, 1000);
+      }
     }
   }, [
-    state.theme, state.language, state.currencyBase, state.privacyMode, 
-    state.showCents, state.reduceMotion, state.accounts, state.transactions, 
-    state.debts, state.goals, state.budgets, state.isLoading
+    state.theme, state.language, state.currencyBase, state.privacyMode,
+    state.showCents, state.reduceMotion, state.accounts, state.transactions,
+    state.debts, state.goals, state.budgets, state.isLoading, state.user?.uid
   ]);
 
   // --- View Navigation & ReturnTo ---
@@ -107,6 +137,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   // --- Auth Logic ---
+
+  // Load user's app data from Firestore
+  const loadUserData = async (uid: string) => {
+    try {
+      const dataRef = doc(db, 'users', uid, 'appData', 'main');
+      const dataSnap = await getDoc(dataRef);
+
+      if (dataSnap.exists()) {
+        // User has existing data in Firestore
+        const data = dataSnap.data();
+        setState(prev => ({
+          ...prev,
+          accounts: data.accounts || [],
+          transactions: data.transactions || [],
+          debts: data.debts || [],
+          goals: data.goals || [],
+          budgets: data.budgets || [],
+        }));
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      } else {
+        // New user - start with empty data, NOT demo data
+        const emptyData = {
+          accounts: [],
+          transactions: [],
+          debts: [],
+          goals: [],
+          budgets: []
+        };
+        setState(prev => ({
+          ...prev,
+          ...emptyData
+        }));
+        // Save empty initial state to Firestore
+        await setDoc(dataRef, emptyData);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(emptyData));
+      }
+    } catch (e) {
+      // On error, keep current state (might be from localStorage cache)
+    }
+  };
+
+  // Save user's app data to Firestore (called by debounced effect)
+  // No separate function needed - logic is in useEffect
+
   const loadFullUserProfile = async (uid: string, baseUser: User) => {
     try {
       const userRef = doc(db, 'users', uid);
@@ -117,7 +191,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setState(prev => ({
           ...prev,
           user: profile,
-          theme: profile.theme, // Sync visual settings from cloud
+          theme: profile.theme,
           language: profile.language,
           currencyBase: profile.currencyBase,
         }));
@@ -138,6 +212,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await setDoc(userRef, newProfile);
         setState(prev => ({ ...prev, user: newProfile }));
       }
+
+      // Load app data after profile
+      await loadUserData(uid);
+
     } catch (e) {
       console.warn("Profile sync error", e);
     }
@@ -147,37 +225,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
         const basicProfile: UserProfile = {
-           uid: firebaseUser.uid,
-           email: firebaseUser.email,
-           displayName: firebaseUser.displayName,
-           photoURL: firebaseUser.photoURL,
-           theme: state.theme,
-           language: state.language,
-           currencyBase: state.currencyBase,
-           privacyMode: state.privacyMode,
-           showCents: state.showCents,
-           reduceMotion: state.reduceMotion,
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          displayName: firebaseUser.displayName,
+          photoURL: firebaseUser.photoURL,
+          theme: state.theme,
+          language: state.language,
+          currencyBase: state.currencyBase,
+          privacyMode: state.privacyMode,
+          showCents: state.showCents,
+          reduceMotion: state.reduceMotion,
         };
 
-        setState(prev => ({ 
-          ...prev, 
+        setState(prev => ({
+          ...prev,
           user: prev.user?.uid === firebaseUser.uid ? prev.user : basicProfile,
-          isLoading: false 
+          isLoading: false
         }));
 
         if (!isAuthCheckComplete.current) {
-           const lastView = localStorage.getItem('uflow_last_view') as ViewState;
-           if (lastView && ['dashboard','history','analytics','accounts','debts','goals','settings', 'ai-assistant'].includes(lastView)) {
-             setCurrentViewState(lastView);
-           }
-           isAuthCheckComplete.current = true;
+          const lastView = localStorage.getItem('uflow_last_view') as ViewState;
+          if (lastView && ['dashboard', 'history', 'analytics', 'accounts', 'debts', 'goals', 'settings', 'ai-assistant'].includes(lastView)) {
+            setCurrentViewState(lastView);
+          }
+          isAuthCheckComplete.current = true;
         }
 
         loadFullUserProfile(firebaseUser.uid, firebaseUser);
 
       } else {
+        // User logged out - reset to demo data
         localStorage.removeItem('uflow_last_view');
-        setState(prev => ({ ...prev, user: null, isLoading: false }));
+        localStorage.removeItem(STORAGE_KEY);
+        lastSavedDataRef.current = '';
+        if (saveTimeoutRef.current) {
+          clearTimeout(saveTimeoutRef.current);
+        }
+        setState(prev => ({
+          ...prev,
+          user: null,
+          isLoading: false,
+          accounts: DEMO_ACCOUNTS,
+          transactions: DEMO_TRANSACTIONS,
+          debts: DEMO_DEBTS,
+          goals: DEMO_GOALS,
+          budgets: DEMO_BUDGETS
+        }));
         setCurrentViewState('dashboard');
         isAuthCheckComplete.current = true;
       }
@@ -191,30 +284,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [state.theme]);
 
   // --- State Modifiers (Actions) ---
-  
+
   const updateState = (updates: Partial<AppState>) => {
     setState(prev => ({ ...prev, ...updates }));
     // Sync critical profile settings to Firestore if logged in
     const profileKeys = ['theme', 'language', 'currencyBase', 'privacyMode', 'showCents', 'reduceMotion'];
     const shouldSync = Object.keys(updates).some(k => profileKeys.includes(k));
-    
+
     if (shouldSync && state.user) {
-        const profileUpdates = {};
-        Object.keys(updates).forEach(k => {
-            if (profileKeys.includes(k)) (profileUpdates as any)[k] = (updates as any)[k];
-        });
-        const userRef = doc(db, 'users', state.user.uid);
-        updateDoc(userRef, profileUpdates).catch(() => {});
+      const profileUpdates = {};
+      Object.keys(updates).forEach(k => {
+        if (profileKeys.includes(k)) (profileUpdates as any)[k] = (updates as any)[k];
+      });
+      const userRef = doc(db, 'users', state.user.uid);
+      updateDoc(userRef, profileUpdates).catch(() => { });
     }
   };
 
   const login = async (email: string, pass: string) => {
-    try { await signInWithEmailAndPassword(auth, email, pass); addToast("Credentials Accepted", "success"); } 
+    try { await signInWithEmailAndPassword(auth, email, pass); addToast("Credentials Accepted", "success"); }
     catch (e) { throw e; }
   };
 
   const register = async (email: string, pass: string, name: string) => {
-    try { 
+    try {
       const res = await createUserWithEmailAndPassword(auth, email, pass);
       await updateProfile(res.user, { displayName: name });
       addToast("Identity Generated", "success");
@@ -222,7 +315,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const loginWithGoogle = async () => {
-    try { await signInWithPopup(auth, googleProvider); addToast("Biometric Auth Verified", "success"); } 
+    try { await signInWithPopup(auth, googleProvider); addToast("Biometric Auth Verified", "success"); }
     catch (e) { addToast("Auth Failed", "error"); throw e; }
   };
 
@@ -234,28 +327,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // --- CRUD Actions (Immutable Updates) ---
 
   const addTransaction = useCallback((tx: Omit<Transaction, 'id' | 'createdAt'>) => {
-    const newTx: Transaction = { 
-      ...tx, 
-      id: generateId(), 
-      createdAt: Date.now() 
+    const newTx: Transaction = {
+      ...tx,
+      id: generateId(),
+      createdAt: Date.now()
     };
-    setState(prev => ({ 
-      ...prev, 
-      transactions: [newTx, ...prev.transactions] 
+    setState(prev => ({
+      ...prev,
+      transactions: [newTx, ...prev.transactions]
     }));
     addToast('Record Saved', 'success');
   }, [addToast]);
 
   const addAccount = useCallback((acc: Omit<Account, 'id'>) => {
-    const newAcc = { ...acc, id: generateId() };
+    const newAcc = { ...acc, id: generateId(), ownerId: state.user?.uid };
     setState(prev => ({ ...prev, accounts: [...prev.accounts, newAcc] }));
+
+    // If initial balance is set, create an adjustment transaction
+    if (acc.initialBalance && acc.initialBalance > 0) {
+      const initialTx: Transaction = {
+        id: generateId(),
+        type: 'income',
+        amount: acc.initialBalance,
+        currency: acc.currency,
+        accountId: newAcc.id,
+        category: 'Initial Balance',
+        note: 'Saldo inicial de cuenta',
+        date: new Date().toISOString(),
+        createdAt: Date.now()
+      };
+      setState(prev => ({ ...prev, transactions: [initialTx, ...prev.transactions] }));
+    }
+
     addToast('Account Added', 'success');
+  }, [addToast, state.user?.uid]);
+
+  const deleteAccount = useCallback((id: string) => {
+    setState(prev => ({
+      ...prev,
+      accounts: prev.accounts.filter(acc => acc.id !== id)
+    }));
+    addToast('Account Deleted', 'info');
+  }, [addToast]);
+
+  const updateAccount = useCallback((id: string, data: Partial<Account>) => {
+    setState(prev => ({
+      ...prev,
+      accounts: prev.accounts.map(acc => acc.id === id ? { ...acc, ...data } : acc)
+    }));
+    addToast('Account Updated', 'success');
   }, [addToast]);
 
   const addDebt = useCallback((debt: Omit<Debt, 'id' | 'payments' | 'createdAt'>) => {
     const newDebt: Debt = { ...debt, id: generateId(), payments: [], createdAt: new Date().toISOString() };
     setState(prev => ({ ...prev, debts: [...prev.debts, newDebt] }));
     addToast('Debt Logged', 'success');
+  }, [addToast]);
+
+  const deleteDebt = useCallback((id: string) => {
+    setState(prev => ({ ...prev, debts: prev.debts.filter(d => d.id !== id) }));
+    addToast('Debt Deleted', 'info');
   }, [addToast]);
 
   const addGoal = useCallback((goal: Omit<Goal, 'id'>) => {
@@ -309,7 +440,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     toggleReduceMotion: () => updateState({ reduceMotion: !state.reduceMotion }),
     setView: setCurrentView,
     currentView,
-    addTransaction, addAccount, addDebt, addGoal, updateGoal, payDebt, resetData, t,
+    addTransaction, addAccount, deleteAccount, updateAccount, addDebt, deleteDebt, addGoal, updateGoal, payDebt, resetData, t,
     addToast, removeToast, toasts
   };
 

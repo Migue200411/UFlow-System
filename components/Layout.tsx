@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import {
-  LayoutDashboard, History, PieChart, Wallet, ShieldAlert, Target, Settings,
+import { 
+  LayoutDashboard, History, PieChart, Wallet, ShieldAlert, Target, Settings, 
   Menu, Plus, Eye, EyeOff, Moon, Sun, Sparkles, Loader2
 } from 'lucide-react';
 import { cn, processAICommand } from '../utils';
@@ -13,8 +13,8 @@ const NavItem = ({ icon: Icon, label, active, onClick }: any) => (
     onClick={onClick}
     className={cn(
       "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 group relative overflow-hidden",
-      active
-        ? "text-brand-600 dark:text-brand-400 bg-brand-500/10 shadow-sm"
+      active 
+        ? "text-brand-600 dark:text-brand-400 bg-brand-500/10 shadow-sm" 
         : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-white/5"
     )}
   >
@@ -54,41 +54,41 @@ const QuickInputModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => 
     <Modal isOpen={isOpen} onClose={onClose} title={t('act.quick_input')}>
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="grid grid-cols-2 gap-4">
-          <Select
+          <Select 
             label={t('lbl.type')}
             value={formData.type}
-            onChange={val => setFormData({ ...formData, type: val as any })}
+            onChange={val => setFormData({...formData, type: val as any})}
             options={[
               { value: 'expense', label: 'Expense' },
               { value: 'income', label: 'Income' },
               { value: 'adjustment', label: 'Adjustment' },
             ]}
           />
-          <Input
+          <Input 
             label={t('lbl.date')}
             type="date"
             value={formData.date}
-            onChange={e => setFormData({ ...formData, date: e.target.value })}
+            onChange={e => setFormData({...formData, date: e.target.value})}
           />
         </div>
 
         <div className="grid grid-cols-3 gap-4">
           <div className="col-span-2">
-            <Input
+            <Input 
               label={t('lbl.amount')}
-              type="number"
-              step="0.01"
+              type="number" 
+              step="0.01" 
               required
               value={formData.amount}
-              onChange={e => setFormData({ ...formData, amount: e.target.value })}
+              onChange={e => setFormData({...formData, amount: e.target.value})}
               placeholder="0.00"
               className="font-mono text-lg tracking-wider font-bold"
             />
           </div>
-          <Select
+          <Select 
             label="Currency"
             value={formData.currency}
-            onChange={val => setFormData({ ...formData, currency: val as any })}
+            onChange={val => setFormData({...formData, currency: val as any})}
             options={[
               { value: 'COP', label: 'COP' },
               { value: 'USD', label: 'USD' },
@@ -97,18 +97,18 @@ const QuickInputModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => 
           />
         </div>
 
-        <Select
+        <Select 
           label={t('lbl.account')}
           value={formData.accountId}
-          onChange={val => setFormData({ ...formData, accountId: val })}
+          onChange={val => setFormData({...formData, accountId: val})}
           options={accounts.map(acc => ({ value: acc.id, label: `${acc.name} (${acc.currency})` }))}
         />
 
-        <Input
+        <Input 
           label={t('lbl.category')}
           list="categories"
           value={formData.category}
-          onChange={e => setFormData({ ...formData, category: e.target.value })}
+          onChange={e => setFormData({...formData, category: e.target.value})}
           placeholder="e.g. Food, Rent"
         />
         <datalist id="categories">
@@ -116,10 +116,10 @@ const QuickInputModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => 
           <option value="Salary" /><option value="Business" /><option value="Entertainment" />
         </datalist>
 
-        <Input
+        <Input 
           label={t('lbl.desc')}
           value={formData.note}
-          onChange={e => setFormData({ ...formData, note: e.target.value })}
+          onChange={e => setFormData({...formData, note: e.target.value})}
           placeholder="Optional note..."
         />
 
@@ -138,7 +138,7 @@ const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () =
   const context = useApp();
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-
+  
   // Staging state for the "Editable Preview"
   const [resultType, setResultType] = useState<'transaction' | 'goal' | null>(null);
   const [draftTx, setDraftTx] = useState<any>(null);
@@ -149,12 +149,12 @@ const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () =
     setIsLoading(true);
     try {
       const response = await processAICommand(prompt, context);
-
+      
       // Strict role enforcement
       if (response.intent === 'query') {
-        const msg = response.lang === 'es'
-          ? "Este botón es solo para crear entradas. Para consejos, usa el Asistente IA."
-          : "This tool is for creating entries only. For advice, use the AI Assistant.";
+        const msg = response.lang === 'es' 
+           ? "Este botón es solo para crear entradas. Para consejos, usa el Asistente IA." 
+           : "This tool is for creating entries only. For advice, use the AI Assistant.";
         addToast(msg, 'info');
         return;
       }
@@ -162,27 +162,12 @@ const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () =
       if (response.intent === 'create' && response.structured) {
         setResultType(response.structured.type);
         if (response.structured.type === 'transaction') {
-          const data = response.structured.data;
-          // Parse and validate date from Claude
-          let dateStr = data.date;
-          try {
-            const parsedDate = new Date(dateStr);
-            // Check if valid date
-            if (isNaN(parsedDate.getTime())) {
-              dateStr = new Date().toISOString();
-            }
-          } catch {
-            dateStr = new Date().toISOString();
-          }
-          // Extract YYYY-MM-DD for input type="date"
-          const dateForInput = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr.substring(0, 10);
-
-          setDraftTx({
-            ...data,
-            date: dateForInput
-          });
+           setDraftTx({
+             ...response.structured.data,
+             date: response.structured.data.date.split('T')[0] // normalize for input date
+           });
         } else {
-          setDraftGoal(response.structured.data);
+           setDraftGoal(response.structured.data);
         }
       } else {
         addToast(response.text, 'info');
@@ -194,18 +179,12 @@ const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () =
 
   const handleConfirm = () => {
     if (resultType === 'transaction' && draftTx) {
-      // Fix timezone issue: if date is YYYY-MM-DD, parse at noon to avoid day shift
-      let finalDate = draftTx.date;
-      if (finalDate && finalDate.length === 10) {
-        // It's just a date without time, add noon time to avoid timezone issues
-        finalDate = `${finalDate}T12:00:00`;
-      }
-
       addTransaction({
         ...draftTx,
-        date: new Date(finalDate).toISOString(),
-        amount: parseFloat(draftTx.amount)
+        date: new Date(draftTx.date).toISOString(),
+        amount: parseFloat(draftTx.amount) // Ensure number
       });
+      // Redirect to History
       setView('history');
     } else if (resultType === 'goal' && draftGoal) {
       addGoal({
@@ -236,114 +215,114 @@ const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () =
               placeholder={t('ai.modal_placeholder')}
               value={prompt}
               onChange={e => setPrompt(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleGenerate(); } }}
+              onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleGenerate(); } }}
               autoFocus
             />
             <div className="absolute bottom-3 right-3 text-xs text-zinc-400">Shift+Enter for new line</div>
           </div>
-
-          <Button
-            className="w-full h-12"
-            onClick={handleGenerate}
+          
+          <Button 
+            className="w-full h-12" 
+            onClick={handleGenerate} 
             disabled={!prompt.trim() || isLoading}
           >
             {isLoading ? (
-              <><Loader2 className="w-4 h-4 animate-spin mr-2" /> {t('ai.thinking')}</>
+               <><Loader2 className="w-4 h-4 animate-spin mr-2" /> {t('ai.thinking')}</>
             ) : (
-              <><Sparkles className="w-4 h-4 mr-2" /> Generate Draft</>
+               <><Sparkles className="w-4 h-4 mr-2" /> Generate Draft</>
             )}
           </Button>
         </div>
       ) : (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-brand-500 text-sm font-bold uppercase tracking-wider">
-              <Sparkles className="w-4 h-4" /> Draft Generated
-            </div>
-            <Button variant="ghost" size="sm" onClick={() => setResultType(null)} className="h-8 text-xs">Back to prompt</Button>
+             <div className="flex items-center gap-2 text-brand-500 text-sm font-bold uppercase tracking-wider">
+               <Sparkles className="w-4 h-4" /> Draft Generated
+             </div>
+             <Button variant="ghost" size="sm" onClick={() => setResultType(null)} className="h-8 text-xs">Back to prompt</Button>
           </div>
-
+          
           {/* Editable Preview Card */}
           <Card className="bg-brand-500/5 border-brand-500/20 p-5 space-y-4">
-
+            
             {resultType === 'transaction' && draftTx && (
               <>
-                <div className="grid grid-cols-2 gap-4">
-                  <Select
-                    label="Type"
-                    value={draftTx.type}
-                    onChange={v => setDraftTx({ ...draftTx, type: v })}
-                    options={[{ value: 'expense', label: 'Expense' }, { value: 'income', label: 'Income' }, { value: 'adjustment', label: 'Adjustment' }]}
-                  />
-                  <Input
-                    label="Date"
-                    type="date"
-                    value={draftTx.date}
-                    onChange={e => setDraftTx({ ...draftTx, date: e.target.value })}
-                  />
-                </div>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-2">
-                    <Input
-                      label="Amount"
-                      type="number"
-                      value={draftTx.amount}
-                      onChange={e => setDraftTx({ ...draftTx, amount: e.target.value })}
-                      className="font-mono font-bold"
-                    />
-                  </div>
-                  <Select
-                    label="Currency"
-                    value={draftTx.currency}
-                    onChange={v => setDraftTx({ ...draftTx, currency: v })}
-                    options={[{ value: 'COP', label: 'COP' }, { value: 'USD', label: 'USD' }, { value: 'EUR', label: 'EUR' }]}
-                  />
-                </div>
-                <Select
-                  label="Account"
-                  value={draftTx.accountId}
-                  onChange={v => setDraftTx({ ...draftTx, accountId: v })}
-                  options={accounts.map(acc => ({ value: acc.id, label: acc.name }))}
-                />
-                <Input
-                  label="Category"
-                  value={draftTx.category}
-                  onChange={e => setDraftTx({ ...draftTx, category: e.target.value })}
-                />
+                 <div className="grid grid-cols-2 gap-4">
+                   <Select 
+                      label="Type"
+                      value={draftTx.type}
+                      onChange={v => setDraftTx({...draftTx, type: v})}
+                      options={[{value:'expense',label:'Expense'},{value:'income',label:'Income'},{value:'adjustment',label:'Adjustment'}]}
+                   />
+                   <Input 
+                      label="Date"
+                      type="date"
+                      value={draftTx.date}
+                      onChange={e => setDraftTx({...draftTx, date: e.target.value})}
+                   />
+                 </div>
+                 <div className="grid grid-cols-3 gap-3">
+                   <div className="col-span-2">
+                      <Input 
+                        label="Amount"
+                        type="number"
+                        value={draftTx.amount}
+                        onChange={e => setDraftTx({...draftTx, amount: e.target.value})}
+                        className="font-mono font-bold"
+                      />
+                   </div>
+                   <Select 
+                      label="Currency"
+                      value={draftTx.currency}
+                      onChange={v => setDraftTx({...draftTx, currency: v})}
+                      options={[{value:'COP',label:'COP'},{value:'USD',label:'USD'},{value:'EUR',label:'EUR'}]}
+                   />
+                 </div>
+                 <Select 
+                    label="Account"
+                    value={draftTx.accountId}
+                    onChange={v => setDraftTx({...draftTx, accountId: v})}
+                    options={accounts.map(acc => ({ value: acc.id, label: acc.name }))}
+                 />
+                 <Input 
+                    label="Category"
+                    value={draftTx.category}
+                    onChange={e => setDraftTx({...draftTx, category: e.target.value})}
+                 />
               </>
             )}
 
             {resultType === 'goal' && draftGoal && (
-              <>
-                <Input
-                  label="Goal Name"
-                  value={draftGoal.name}
-                  onChange={e => setDraftGoal({ ...draftGoal, name: e.target.value })}
-                />
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-2">
-                    <Input
-                      label="Target Amount"
-                      type="number"
-                      value={draftGoal.targetAmount}
-                      onChange={e => setDraftGoal({ ...draftGoal, targetAmount: e.target.value })}
-                    />
-                  </div>
-                  <Select
-                    label="Currency"
-                    value={draftGoal.currency}
-                    onChange={v => setDraftGoal({ ...draftGoal, currency: v })}
-                    options={[{ value: 'COP', label: 'COP' }, { value: 'USD', label: 'USD' }, { value: 'EUR', label: 'EUR' }]}
-                  />
-                </div>
-              </>
+               <>
+                 <Input 
+                    label="Goal Name"
+                    value={draftGoal.name}
+                    onChange={e => setDraftGoal({...draftGoal, name: e.target.value})}
+                 />
+                 <div className="grid grid-cols-3 gap-3">
+                   <div className="col-span-2">
+                     <Input 
+                        label="Target Amount"
+                        type="number"
+                        value={draftGoal.targetAmount}
+                        onChange={e => setDraftGoal({...draftGoal, targetAmount: e.target.value})}
+                     />
+                   </div>
+                   <Select 
+                      label="Currency"
+                      value={draftGoal.currency}
+                      onChange={v => setDraftGoal({...draftGoal, currency: v})}
+                      options={[{value:'COP',label:'COP'},{value:'USD',label:'USD'},{value:'EUR',label:'EUR'}]}
+                   />
+                 </div>
+               </>
             )}
 
           </Card>
 
           <div className="flex gap-3">
-            <Button variant="ghost" className="flex-1" onClick={handleClose}>{t('act.cancel')}</Button>
-            <Button className="flex-[2]" onClick={handleConfirm}>{t('act.confirm_create')}</Button>
+             <Button variant="ghost" className="flex-1" onClick={handleClose}>{t('act.cancel')}</Button>
+             <Button className="flex-[2]" onClick={handleConfirm}>{t('act.confirm_create')}</Button>
           </div>
         </div>
       )}
@@ -380,37 +359,37 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             UFLOW
           </h1>
           <div className="mt-2 flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-            <p className="text-[10px] text-zinc-400 font-mono tracking-widest uppercase">System Online</p>
+             <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+             <p className="text-[10px] text-zinc-400 font-mono tracking-widest uppercase">System Online</p>
           </div>
         </div>
         <nav className="flex-1 px-4 space-y-2 overflow-y-auto py-2 custom-scrollbar">
           {NAV_ITEMS.map(item => (
-            <NavItem
-              key={item.id}
-              icon={item.icon}
-              label={item.label}
-              active={currentView === item.id}
-              onClick={() => setView(item.id as any)}
+            <NavItem 
+              key={item.id} 
+              icon={item.icon} 
+              label={item.label} 
+              active={currentView === item.id} 
+              onClick={() => setView(item.id as any)} 
             />
           ))}
         </nav>
         <div className="p-6">
           <div className="bg-zinc-100 dark:bg-white/5 rounded-2xl p-4 border border-zinc-200 dark:border-white/5 backdrop-blur-md">
-            <div className="flex justify-between items-center mb-2">
-              <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">Storage</span>
-              <span className="text-[10px] font-mono text-brand-500">12%</span>
-            </div>
-            <div className="h-1.5 w-full bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
-              <div className="h-full bg-brand-500 w-[12%] shadow-[0_0_10px_rgba(124,92,255,0.5)]" />
-            </div>
+             <div className="flex justify-between items-center mb-2">
+               <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">Storage</span>
+               <span className="text-[10px] font-mono text-brand-500">12%</span>
+             </div>
+             <div className="h-1.5 w-full bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+               <div className="h-full bg-brand-500 w-[12%] shadow-[0_0_10px_rgba(124,92,255,0.5)]" />
+             </div>
           </div>
         </div>
       </aside>
 
       {/* Main Content - Padded for floating sidebar */}
       <main className="flex-1 flex flex-col relative min-w-0 md:pl-72 transition-all duration-300">
-
+        
         {/* Header - Floating Glass */}
         <header className="h-20 flex items-center justify-between px-6 sm:px-8 z-30 sticky top-0 mt-4 mx-4 sm:mx-8 rounded-2xl glass-panel shadow-premium dark:shadow-glass-sm mb-6">
           <div className="flex items-center gap-4">
@@ -421,16 +400,16 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
               {NAV_ITEMS.find(n => n.id === currentView)?.label}
             </h2>
           </div>
-
+          
           <div className="flex items-center gap-2 sm:gap-4">
             {/* Create with AI Button */}
-            <Button
-              variant="primary"
-              className="hidden md:flex bg-gradient-to-r from-violet-600 to-fuchsia-600 border-none shadow-neon"
-              onClick={() => setAiCreateOpen(true)}
+            <Button 
+               variant="primary" 
+               className="hidden md:flex bg-gradient-to-r from-violet-600 to-fuchsia-600 border-none shadow-neon"
+               onClick={() => setAiCreateOpen(true)}
             >
-              <Sparkles className="w-4 h-4" />
-              <span className="hidden lg:inline">{t('act.create_ai')}</span>
+               <Sparkles className="w-4 h-4" />
+               <span className="hidden lg:inline">{t('act.create_ai')}</span>
             </Button>
 
             <Button variant="icon" onClick={togglePrivacy} title="Toggle Privacy">
@@ -449,34 +428,34 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 
         {/* Mobile Nav Drawer */}
         {isMobileMenuOpen && (
-          <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-md md:hidden animate-in fade-in" onClick={() => setIsMobileMenuOpen(false)}>
-            <div className="w-72 h-full glass-panel border-r border-white/10 p-6 flex flex-col animate-in slide-in-from-left duration-300 shadow-2xl" onClick={e => e.stopPropagation()}>
-              <div className="mb-8 px-2 flex items-center gap-3">
-                <div className="w-5 h-5 bg-brand-500 rounded-sm rotate-45 shadow-[0_0_15px_rgba(124,92,255,0.8)]" />
-                <h1 className="text-2xl font-bold font-mono text-zinc-900 dark:text-white">UFLOW</h1>
-              </div>
-              <nav className="space-y-2">
-                {NAV_ITEMS.map(item => (
-                  <NavItem
-                    key={item.id}
-                    icon={item.icon}
-                    label={item.label}
-                    active={currentView === item.id}
-                    onClick={() => { setView(item.id as any); setIsMobileMenuOpen(false); }}
-                  />
-                ))}
-              </nav>
-            </div>
-          </div>
+           <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-md md:hidden animate-in fade-in" onClick={() => setIsMobileMenuOpen(false)}>
+             <div className="w-72 h-full glass-panel border-r border-white/10 p-6 flex flex-col animate-in slide-in-from-left duration-300 shadow-2xl" onClick={e => e.stopPropagation()}>
+                <div className="mb-8 px-2 flex items-center gap-3">
+                   <div className="w-5 h-5 bg-brand-500 rounded-sm rotate-45 shadow-[0_0_15px_rgba(124,92,255,0.8)]" />
+                   <h1 className="text-2xl font-bold font-mono text-zinc-900 dark:text-white">UFLOW</h1>
+                </div>
+                <nav className="space-y-2">
+                  {NAV_ITEMS.map(item => (
+                    <NavItem 
+                      key={item.id} 
+                      icon={item.icon} 
+                      label={item.label} 
+                      active={currentView === item.id} 
+                      onClick={() => { setView(item.id as any); setIsMobileMenuOpen(false); }} 
+                    />
+                  ))}
+                </nav>
+             </div>
+           </div>
         )}
 
         {/* Scrollable View Area */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-8 pb-24 md:pb-8 relative scroll-smooth">
           <div className="max-w-7xl mx-auto space-y-8">
-            {children}
+             {children}
           </div>
         </div>
-
+        
         {/* Toast Container */}
         <ToastContainer toasts={toasts} removeToast={removeToast} />
       </main>
