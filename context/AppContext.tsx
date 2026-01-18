@@ -15,17 +15,17 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 const INITIAL_STATE: AppState = {
   user: null,
   isLoading: true,
-  theme: 'dark',
-  language: 'en',
+  theme: 'light',
+  language: 'es',
   currencyBase: 'COP',
   privacyMode: false,
   showCents: false,
   reduceMotion: false,
-  accounts: DEMO_ACCOUNTS,
-  transactions: DEMO_TRANSACTIONS,
-  debts: DEMO_DEBTS,
-  goals: DEMO_GOALS,
-  budgets: DEMO_BUDGETS,
+  accounts: [],
+  transactions: [],
+  debts: [],
+  goals: [],
+  budgets: [],
 };
 
 const STORAGE_KEY = 'uflow_db_v2'; // Bump version to force fresh read/write if schema changes
@@ -158,6 +158,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       } else {
         // New user - start with empty data, NOT demo data
+        // IMPORTANT: Clear any demo data from localStorage first
+        localStorage.removeItem(STORAGE_KEY);
+        
         const emptyData = {
           accounts: [],
           transactions: [],
