@@ -11,7 +11,7 @@ import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-// Default state serves as the "Seed" if no local data exists
+// Default state with demo data for visitors (not logged in)
 const INITIAL_STATE: AppState = {
   user: null,
   isLoading: true,
@@ -21,14 +21,12 @@ const INITIAL_STATE: AppState = {
   privacyMode: false,
   showCents: false,
   reduceMotion: false,
-  accounts: [],
-  transactions: [],
-  debts: [],
-  goals: [],
-  budgets: [],
+  accounts: DEMO_ACCOUNTS,
+  transactions: DEMO_TRANSACTIONS,
+  debts: DEMO_DEBTS,
+  goals: DEMO_GOALS,
+  budgets: DEMO_BUDGETS,
 };
-
-const STORAGE_KEY = 'uflow_db_v2'; // Bump version to force fresh read/write if schema changes
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [state, setState] = useState<AppState>(INITIAL_STATE);
@@ -36,40 +34,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [toasts, setToasts] = useState<{ id: string; message: string; type: 'success' | 'error' | 'info' }[]>([]);
 
   const isAuthCheckComplete = useRef(false);
-  const isDataInitialized = useRef(false);
+  const [isLoadingUserData, setIsLoadingUserData] = useState(true);
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedDataRef = useRef<string>('');
 
-  // --- 1. PERSISTENCE LAYER ---
-  // Load data from LocalStorage on Mount
+  // --- 1. PERSISTENCE LAYER (FIREBASE ONLY) ---
+  // Save data to Firestore whenever critical data changes (debounced)
+  // Skip saving while loading user data to prevent saving demo data
   useEffect(() => {
-    const loadLocalData = () => {
-      try {
-        const stored = localStorage.getItem(STORAGE_KEY);
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          // Merge stored data with initial structure to ensure type safety
-          setState(prev => ({
-            ...prev,
-            ...parsed,
-            user: prev.user, // Don't overwrite auth user from local storage blindly
-            isLoading: prev.isLoading // Keep loading state separate
-          }));
-        }
-      } catch (e) {
-        console.error("Failed to load local data", e);
-      }
-      isDataInitialized.current = true;
-    };
-
-    if (!isDataInitialized.current) {
-      loadLocalData();
-    }
-  }, []);
-
-  // Save data to LocalStorage and Firestore whenever critical data changes
-  useEffect(() => {
-    if (!state.isLoading && isDataInitialized.current) {
+    if (!state.isLoading && state.user?.uid && !isLoadingUserData) {
       const dataToSave = {
         accounts: state.accounts,
         transactions: state.transactions,
@@ -78,45 +51,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         budgets: state.budgets
       };
 
-      // Always save to localStorage (cache/offline)
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        ...dataToSave,
-        theme: state.theme,
-        language: state.language,
-        currencyBase: state.currencyBase,
-        privacyMode: state.privacyMode,
-        showCents: state.showCents,
-        reduceMotion: state.reduceMotion,
-      }));
+      const dataString = JSON.stringify(dataToSave);
 
-      // Save to Firestore if user is logged in (debounced)
-      if (state.user?.uid) {
-        const dataString = JSON.stringify(dataToSave);
+      // Skip if data hasn't changed
+      if (dataString === lastSavedDataRef.current) return;
 
-        // Skip if data hasn't changed
-        if (dataString === lastSavedDataRef.current) return;
-
-        // Clear existing timeout
-        if (saveTimeoutRef.current) {
-          clearTimeout(saveTimeoutRef.current);
-        }
-
-        // Debounced save (1 second delay)
-        saveTimeoutRef.current = setTimeout(async () => {
-          try {
-            const dataRef = doc(db, 'users', state.user!.uid, 'appData', 'main');
-            await setDoc(dataRef, dataToSave, { merge: true });
-            lastSavedDataRef.current = dataString;
-          } catch (e) {
-            // Silent fail - data is cached in localStorage
-          }
-        }, 1000);
+      // Clear existing timeout
+      if (saveTimeoutRef.current) {
+        clearTimeout(saveTimeoutRef.current);
       }
+
+      // Debounced save to Firebase (1 second delay)
+      saveTimeoutRef.current = setTimeout(async () => {
+        try {
+          const dataRef = doc(db, 'users', state.user!.uid, 'appData', 'main');
+          await setDoc(dataRef, dataToSave, { merge: true });
+          lastSavedDataRef.current = dataString;
+        } catch (e) {
+          console.error('Failed to save to Firebase:', e);
+        }
+      }, 1000);
     }
   }, [
-    state.theme, state.language, state.currencyBase, state.privacyMode,
-    state.showCents, state.reduceMotion, state.accounts, state.transactions,
-    state.debts, state.goals, state.budgets, state.isLoading, state.user?.uid
+    state.accounts, state.transactions, state.debts, state.goals, 
+    state.budgets, state.isLoading, state.user?.uid, isLoadingUserData
   ]);
 
   // --- View Navigation & ReturnTo ---
@@ -155,12 +113,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           goals: data.goals || [],
           budgets: data.budgets || [],
         }));
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
       } else {
-        // New user - start with empty data, NOT demo data
-        // IMPORTANT: Clear any demo data from localStorage first
-        localStorage.removeItem(STORAGE_KEY);
-        
+        // New user - start with empty data
         const emptyData = {
           accounts: [],
           transactions: [],
@@ -174,7 +128,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }));
         // Save empty initial state to Firestore
         await setDoc(dataRef, emptyData);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(emptyData));
       }
     } catch (e) {
       // On error, keep current state (might be from localStorage cache)
@@ -204,7 +157,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           email: baseUser.email,
           displayName: baseUser.displayName,
           photoURL: baseUser.photoURL,
-          theme: 'dark',
+          theme: 'light',
           language: 'en',
           currencyBase: 'COP',
           privacyMode: false,
@@ -240,10 +193,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           reduceMotion: state.reduceMotion,
         };
 
+        // Clear demo data immediately when user logs in
+        // Set empty data first, then load from Firebase
         setState(prev => ({
           ...prev,
           user: prev.user?.uid === firebaseUser.uid ? prev.user : basicProfile,
-          isLoading: false
+          isLoading: false,
+          accounts: [],
+          transactions: [],
+          debts: [],
+          goals: [],
+          budgets: []
         }));
 
         if (!isAuthCheckComplete.current) {
@@ -254,12 +214,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           isAuthCheckComplete.current = true;
         }
 
-        loadFullUserProfile(firebaseUser.uid, firebaseUser);
+        // Block saving until user data is loaded from Firebase
+        setIsLoadingUserData(true);
+        loadFullUserProfile(firebaseUser.uid, firebaseUser).finally(() => {
+          setIsLoadingUserData(false);
+        });
 
       } else {
-        // User logged out - reset to demo data
+        // User logged out - reset to demo data (in memory only, not persisted)
         localStorage.removeItem('uflow_last_view');
-        localStorage.removeItem(STORAGE_KEY);
         lastSavedDataRef.current = '';
         if (saveTimeoutRef.current) {
           clearTimeout(saveTimeoutRef.current);
@@ -420,12 +383,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addToast('Payment Logged', 'success');
   }, [addToast]);
 
-  const resetData = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
-    setState(prev => ({ ...prev, accounts: DEMO_ACCOUNTS, transactions: DEMO_TRANSACTIONS, debts: DEMO_DEBTS, goals: DEMO_GOALS }));
+  const resetData = useCallback(async () => {
+    // Reset data in Firebase to empty
+    if (state.user?.uid) {
+      const emptyData = { accounts: [], transactions: [], debts: [], goals: [], budgets: [] };
+      const dataRef = doc(db, 'users', state.user.uid, 'appData', 'main');
+      await setDoc(dataRef, emptyData);
+      setState(prev => ({ ...prev, ...emptyData }));
+    }
     addToast(state.language === 'es' ? 'Reinicio de fábrica completado' : 'Factory Reset Complete', 'info');
     setTimeout(() => window.location.reload(), 1000);
-  }, [addToast, state.language]);
+  }, [addToast, state.language, state.user?.uid]);
 
   const t = useCallback((key: string) => {
     const dict = TRANSLATIONS[state.language] || TRANSLATIONS.en;
