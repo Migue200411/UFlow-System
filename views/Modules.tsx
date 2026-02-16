@@ -1,14 +1,14 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Card, Button, Input, Select, Badge, Money, Toggle, SegmentedControl, Modal } from '../components/UIComponents';
-import { convertToBase, cn, processAICommand, generateId } from '../utils';
+import { Card, Button, Input, Select, Badge, Money, Toggle, SegmentedControl, Modal, DatePicker } from '../components/UIComponents';
+import { convertToBase, cn, processAICommand, generateId, getTodayStr, dateToISO } from '../utils';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
-import { Moon, Sun, Monitor, Globe, Shield, CreditCard, LogOut, User, Activity, TrendingUp, BarChart3, PieChart as PieIcon, Send, Sparkles, Bot, Wallet, Settings, Trash2 } from 'lucide-react';
-import { AIMessage } from '../types';
+import { Moon, Sun, Monitor, Globe, Shield, CreditCard as CreditCardIcon, LogOut, User, Activity, TrendingUp, BarChart3, PieChart as PieIcon, Send, Sparkles, Bot, Wallet, Settings, Trash2, Plus, Pencil } from 'lucide-react';
+import { AIMessage, CreditCard as CreditCardType } from '../types';
 
 // --- HISTORY VIEW ---
 export const HistoryView = () => {
-  const { transactions, t, language } = useApp();
+  const { transactions, accounts, t, language, setEditingTransaction } = useApp();
   const [filter, setFilter] = React.useState('');
   const [dateFrom, setDateFrom] = React.useState('');
   const [dateTo, setDateTo] = React.useState('');
@@ -16,7 +16,7 @@ export const HistoryView = () => {
   const ITEMS_PER_PAGE = 10;
 
   const sortedTx = useMemo(() => {
-    return [...transactions].sort((a, b) => b.createdAt - a.createdAt);
+    return [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [transactions]);
 
   const filtered = useMemo(() => {
@@ -60,26 +60,18 @@ export const HistoryView = () => {
             className="w-full px-4 py-2 rounded-xl bg-white/50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30"
           />
         </div>
-        <div className="w-40">
-          <label className="text-[10px] uppercase font-bold text-zinc-500 mb-1 block">
-            {language === 'es' ? 'Desde' : 'From'}
-          </label>
-          <input
-            type="date"
+        <div className="w-44">
+          <DatePicker
+            label={language === 'es' ? 'Desde' : 'From'}
             value={dateFrom}
-            onChange={e => setDateFrom(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl bg-white/50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+            onChange={setDateFrom}
           />
         </div>
-        <div className="w-40">
-          <label className="text-[10px] uppercase font-bold text-zinc-500 mb-1 block">
-            {language === 'es' ? 'Hasta' : 'To'}
-          </label>
-          <input
-            type="date"
+        <div className="w-44">
+          <DatePicker
+            label={language === 'es' ? 'Hasta' : 'To'}
             value={dateTo}
-            onChange={e => setDateTo(e.target.value)}
-            className="w-full px-3 py-2 rounded-xl bg-white/50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+            onChange={setDateTo}
           />
         </div>
         {(filter || dateFrom || dateTo) && (
@@ -115,16 +107,16 @@ export const HistoryView = () => {
                 const isEditable = (Date.now() - tx.createdAt) < (72 * 60 * 60 * 1000);
                 return (
                   <tr key={tx.id} className="hover:bg-brand-500/5 transition-colors group">
-                    <td className="px-6 py-4 font-mono text-xs text-zinc-500 whitespace-nowrap">{new Date(tx.date).toLocaleDateString()}</td>
+                    <td className="px-6 py-4 font-mono text-xs text-zinc-500 whitespace-nowrap">{new Date(tx.date).toLocaleDateString(undefined, { timeZone: 'UTC' })}</td>
                     <td className="px-6 py-4 font-medium text-zinc-900 dark:text-zinc-100 safe-text">{tx.category}</td>
                     <td className="px-6 py-4 text-zinc-500 max-w-[150px] safe-text" title={tx.note}>{tx.note}</td>
-                    <td className="px-6 py-4 text-xs text-zinc-500 safe-text">{tx.currency} Acc</td>
+                    <td className="px-6 py-4 text-xs text-zinc-500 safe-text">{accounts.find(a => a.id === tx.accountId)?.name || tx.currency}</td>
                     <td className={`px-6 py-4 text-right font-mono font-bold ${tx.type === 'income' ? 'text-green-600 dark:text-green-400 drop-shadow-sm' : 'text-zinc-900 dark:text-white'}`}>
                       {tx.type === 'expense' ? '-' : ''}<Money amount={tx.amount} currency={tx.currency} />
                     </td>
                     <td className="px-6 py-4 text-right">
                       {isEditable ?
-                        <Badge variant="brand">EDIT 72H</Badge> :
+                        <button onClick={() => setEditingTransaction(tx)} className="cursor-pointer"><Badge variant="brand">EDIT 72H</Badge></button> :
                         <span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-600 uppercase tracking-wider">LOCKED</span>
                       }
                     </td>
@@ -192,45 +184,79 @@ export const HistoryView = () => {
 
 // --- ANALYTICS VIEW ---
 export const AnalyticsView = () => {
-  const { transactions, currencyBase, t, theme, reduceMotion, language } = useApp();
+  const { transactions, currencyBase, timezone, t, theme, reduceMotion, language } = useApp();
+  const tz = timezone === 'auto' ? Intl.DateTimeFormat().resolvedOptions().timeZone : timezone;
 
-  // Month selector state
+  // Month/Year selector state (timezone-aware)
   const [selectedMonth, setSelectedMonth] = useState(() => {
-    const now = new Date();
-    return { month: now.getMonth(), year: now.getFullYear() };
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: 'numeric' }).formatToParts(new Date());
+    return { month: parseInt(parts.find(p => p.type === 'month')!.value) - 1, year: parseInt(parts.find(p => p.type === 'year')!.value) };
   });
 
-  // Generate month options (last 12 months)
-  const monthOptions = useMemo(() => {
-    const options = [];
-    const now = new Date();
-    for (let i = 0; i < 12; i++) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      options.push({
-        value: `${d.getFullYear()}-${d.getMonth()}`,
-        label: d.toLocaleDateString(language === 'es' ? 'es-ES' : 'en-US', { month: 'long', year: 'numeric' }),
-        month: d.getMonth(),
-        year: d.getFullYear()
-      });
+  // Determine range from earliest transaction to current month
+  const { yearOptions, getMonthOptionsForYear } = useMemo(() => {
+    const nowParts = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: 'numeric' }).formatToParts(new Date());
+    const nowMonth = parseInt(nowParts.find(p => p.type === 'month')!.value) - 1;
+    const nowYear = parseInt(nowParts.find(p => p.type === 'year')!.value);
+
+    // Find earliest transaction date
+    let minYear = nowYear, minMonth = nowMonth;
+    if (transactions.length > 0) {
+      const earliest = transactions.reduce((min, tx) => tx.date < min ? tx.date : min, transactions[0].date);
+      const d = new Date(earliest);
+      minYear = d.getFullYear();
+      minMonth = d.getMonth();
     }
-    return options;
-  }, [language]);
+
+    // Year options from earliest to current
+    const years: { value: string; label: string }[] = [];
+    for (let y = nowYear; y >= minYear; y--) {
+      years.push({ value: String(y), label: String(y) });
+    }
+
+    // Month names
+    const monthNames = language === 'es'
+      ? ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+      : ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+    // For a given year, return valid months (capped by earliest and current)
+    const getMonthOptionsForYear = (year: number) => {
+      const startM = year === minYear ? minMonth : 0;
+      const endM = year === nowYear ? nowMonth : 11;
+      const opts: { value: string; label: string }[] = [];
+      for (let m = startM; m <= endM; m++) {
+        opts.push({ value: String(m), label: monthNames[m] });
+      }
+      return opts;
+    };
+
+    return { yearOptions: years, getMonthOptionsForYear };
+  }, [transactions, language, tz]);
 
   // Get days in selected month
   const daysInMonth = new Date(selectedMonth.year, selectedMonth.month + 1, 0).getDate();
 
+  // Helper: parse YYYY-MM-DD directly from ISO string (avoids timezone shift bugs)
+  const parseDateParts = (dateStr: string) => {
+    const d = dateStr.split('T')[0]; // "YYYY-MM-DD"
+    const [y, m, day] = d.split('-').map(Number);
+    return { year: y, month: m - 1, day }; // month 0-indexed
+  };
+
   // 1. Prepare Line Chart Data (Daily flow for selected month)
+  // Only account movements: transactions with an accountId (excludes CC charges without account)
   const lineChartData = useMemo(() => {
-    // Filter transactions for selected month
     const monthTxs = transactions.filter(tx => {
-      const d = new Date(tx.date);
-      return d.getMonth() === selectedMonth.month && d.getFullYear() === selectedMonth.year;
+      if (!tx.accountId) return false;
+      if (tx.category === 'Transfer') return false; // exclude inter-account transfers
+      const p = parseDateParts(tx.date);
+      return p.month === selectedMonth.month && p.year === selectedMonth.year;
     });
 
     // Group by day
     const byDay: Record<number, { income: number; expense: number }> = {};
     monthTxs.forEach(tx => {
-      const day = new Date(tx.date).getDate();
+      const day = parseDateParts(tx.date).day;
       if (!byDay[day]) byDay[day] = { income: 0, expense: 0 };
       const val = convertToBase(tx.amount, tx.currency, currencyBase);
       if (tx.type === 'income') byDay[day].income += val;
@@ -257,13 +283,15 @@ export const AnalyticsView = () => {
   }, [transactions, currencyBase, selectedMonth, daysInMonth]);
 
   // 2. Prepare Pie Chart Data (Expenses by Category for selected month)
+  // Only account movements (same filter as line chart)
   const pieData = useMemo(() => {
     const byCat: Record<string, number> = {};
     transactions
       .filter(tx => {
         if (tx.type !== 'expense') return false;
-        const d = new Date(tx.date);
-        return d.getMonth() === selectedMonth.month && d.getFullYear() === selectedMonth.year;
+        if (!tx.accountId) return false;
+        const p = parseDateParts(tx.date);
+        return p.month === selectedMonth.month && p.year === selectedMonth.year;
       })
       .forEach(tx => {
         const val = convertToBase(tx.amount, tx.currency, currencyBase);
@@ -278,7 +306,7 @@ export const AnalyticsView = () => {
   // Total expenses for percentage calculation
   const totalExpenses = useMemo(() => pieData.reduce((sum, item) => sum + item.value, 0), [pieData]);
 
-  const COLORS = ['#7C5CFF', '#522EC9', '#A18FFF', '#361E85', '#C0B5FF', '#1E0E4F', '#8B7FFF', '#4A3C9E'];
+  const COLORS = ['#6C4CF1', '#5336D6', '#4C6EF5', '#3B82F6', '#5B8DEF', '#3FA7A3', '#60C2C0', '#9A8FBF', '#D16BA5', '#7C8DB5', '#7E6CD6', '#4A9BE8', '#52B5A8', '#B07DC9', '#6898C4'];
   const isDark = theme === 'dark';
 
   // Custom tooltip for Line Chart
@@ -337,20 +365,35 @@ export const AnalyticsView = () => {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
 
-      {/* Month Selector */}
+      {/* Month/Year Selector */}
       <div className="flex items-center justify-between">
         <h2 className="text-2xl font-bold text-zinc-900 dark:text-white">
           {language === 'es' ? 'Análisis Financiero' : 'Financial Analytics'}
         </h2>
-        <div className="w-auto">
+        <div className="flex items-center gap-2">
           <Select
-            value={`${selectedMonth.year}-${selectedMonth.month}`}
+            value={String(selectedMonth.month)}
             onChange={(val) => {
-              const [year, month] = val.split('-').map(Number);
-              setSelectedMonth({ year, month });
+              const m = parseInt(val);
+              setSelectedMonth(prev => ({ ...prev, month: m }));
             }}
-            options={monthOptions.map(opt => ({ value: opt.value, label: opt.label }))}
-            className="!w-auto min-w-[180px]"
+            options={getMonthOptionsForYear(selectedMonth.year)}
+            className="!w-auto min-w-[130px]"
+          />
+          <Select
+            value={String(selectedMonth.year)}
+            onChange={(val) => {
+              const y = parseInt(val);
+              // Clamp month if new year doesn't have that month available
+              const months = getMonthOptionsForYear(y);
+              const validMonths = months.map(m => parseInt(m.value));
+              const clampedMonth = validMonths.includes(selectedMonth.month)
+                ? selectedMonth.month
+                : validMonths[validMonths.length - 1];
+              setSelectedMonth({ year: y, month: clampedMonth });
+            }}
+            options={yearOptions}
+            className="!w-auto min-w-[100px]"
           />
         </div>
       </div>
@@ -416,7 +459,7 @@ export const AnalyticsView = () => {
         </Card>
 
         {/* Pie Chart */}
-        <Card className="min-h-[450px] flex flex-col relative group">
+        <Card className="flex flex-col relative group">
           <div className="mb-4">
             <h3 className="font-bold text-lg text-zinc-900 dark:text-white flex items-center gap-2">
               <PieIcon className="w-4 h-4 text-zinc-400" />
@@ -467,17 +510,17 @@ export const AnalyticsView = () => {
             </div>
 
             {/* Category legend */}
-            <div className="flex flex-wrap gap-2 justify-center px-2 max-h-[80px] overflow-y-auto custom-scrollbar">
+            <div className="flex flex-wrap gap-1.5 justify-center px-2">
               {pieData.map((entry, index) => (
                 <div
                   key={index}
-                  className="flex items-center gap-1.5 bg-zinc-100 dark:bg-white/5 px-2.5 py-1 rounded-full border border-zinc-200 dark:border-white/5 hover:border-brand-500/30 transition-colors"
+                  className="flex items-center gap-1.5 bg-zinc-100 dark:bg-white/5 px-2 py-0.5 rounded-full border border-zinc-200 dark:border-white/5 hover:border-brand-500/30 transition-colors"
                 >
                   <div
-                    className="w-2 h-2 rounded-full"
+                    className="w-2 h-2 rounded-full shrink-0"
                     style={{ backgroundColor: COLORS[index % COLORS.length] }}
                   />
-                  <span className="text-[10px] font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wide max-w-[70px] truncate">
+                  <span className="text-[10px] font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wide">
                     {entry.name}
                   </span>
                 </div>
@@ -492,7 +535,7 @@ export const AnalyticsView = () => {
 
 // --- ACCOUNTS VIEW ---
 export const AccountsView = () => {
-  const { accounts, addAccount, deleteAccount, updateAccount, addTransaction, transactions, t, currencyBase, user, language } = useApp();
+  const { accounts, addAccount, deleteAccount, updateAccount, addTransaction, transactions, timezone, t, currencyBase, user, language } = useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [settingsAccount, setSettingsAccount] = useState<typeof accounts[0] | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -545,7 +588,7 @@ export const AccountsView = () => {
           accountId: transferToAccountId,
           category: 'Transfer',
           note: `Transferred from ${settingsAccount.name}`,
-          date: new Date().toISOString()
+          date: dateToISO(getTodayStr(timezone))
         });
       } else if (deleteAction === 'expense') {
         // Mark as expense/withdrawal
@@ -556,7 +599,7 @@ export const AccountsView = () => {
           accountId: settingsAccount.id,
           category: 'Account Closure',
           note: language === 'es' ? 'Cierre de cuenta' : 'Account closure',
-          date: new Date().toISOString()
+          date: dateToISO(getTodayStr(timezone))
         });
       }
     }
@@ -583,7 +626,7 @@ export const AccountsView = () => {
           accountId: transferToAccountId,
           category: 'Transfer',
           note: `My share from ${settingsAccount.name}`,
-          date: new Date().toISOString()
+          date: dateToISO(getTodayStr(timezone))
         });
         // Reduce the shared account balance
         addTransaction({
@@ -593,7 +636,7 @@ export const AccountsView = () => {
           accountId: settingsAccount.id,
           category: 'Member Exit',
           note: `${user.displayName || user.email} left`,
-          date: new Date().toISOString()
+          date: dateToISO(getTodayStr(timezone))
         });
       } else if (deleteAction === 'expense') {
         // Forfeit the share (nothing to do, just leave)
@@ -624,7 +667,7 @@ export const AccountsView = () => {
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">{t('nav.accounts')}</h2>
         <Button onClick={() => setIsModalOpen(true)}>
-          <CreditCard className="w-4 h-4" />
+          <CreditCardIcon className="w-4 h-4" />
           {language === 'es' ? 'Nueva Cuenta' : 'Add Account'}
         </Button>
       </div>
@@ -731,7 +774,7 @@ export const AccountsView = () => {
                             className={`w-full p-3 rounded-lg border text-left text-sm flex items-center gap-3 transition-all ${deleteAction === 'transfer' ? 'border-brand-500 bg-brand-500/10 text-brand-600' : 'border-zinc-200 dark:border-white/10 hover:border-brand-500/50'}`}
                             onClick={() => { setDeleteAction('transfer'); setTransferToAccountId(transferableAccounts[0]?.id || ''); }}
                           >
-                            <CreditCard className="w-4 h-4" />
+                            <CreditCardIcon className="w-4 h-4" />
                             {language === 'es' ? 'Transferir a otra cuenta' : 'Transfer to another account'}
                           </button>
                         )}
@@ -865,11 +908,24 @@ export const GoalsView = () => {
 
 // --- DEBTS VIEW ---
 export const DebtsView = () => {
-  const { debts, addDebt, deleteDebt, payDebt, t, language } = useApp();
+  const { debts, creditCards, transactions, accounts, timezone, addDebt, deleteDebt, payDebt, addCreditCard, updateCreditCard, deleteCreditCard, chargeCreditCard, payCreditCard, recalcCCBalances, addTransaction, t, language } = useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editDebt, setEditDebt] = useState<typeof debts[0] | null>(null);
   const [paymentAmount, setPaymentAmount] = useState('');
   const [newDebt, setNewDebt] = useState({ person: '', amount: '', type: 'i_owe', currency: 'COP' });
+
+  // Credit card state
+  const [isCardModalOpen, setIsCardModalOpen] = useState(false);
+  const [editCard, setEditCard] = useState<CreditCardType | null>(null);
+  const [cardPayAmount, setCardPayAmount] = useState('');
+  const [cardPayAccountId, setCardPayAccountId] = useState('');
+  const [cardChargeAmount, setCardChargeAmount] = useState('');
+  const [cardChargeDate, setCardChargeDate] = useState(getTodayStr(timezone));
+  const [cardPayDate, setCardPayDate] = useState(getTodayStr(timezone));
+  const [isEditingCardInfo, setIsEditingCardInfo] = useState(false);
+  const [editCardForm, setEditCardForm] = useState({ name: '', creditLimit: '', currency: 'COP', cutoffDay: '', cutoffMode: 'fixed' as 'fixed' | 'relative', paymentDay: '', paymentMode: 'fixed' as 'fixed' | 'relative' });
+  const [newCard, setNewCard] = useState({ name: '', creditLimit: '', currency: 'COP', cutoffDay: '', cutoffMode: 'fixed' as 'fixed' | 'relative', paymentDay: '', paymentMode: 'fixed' as 'fixed' | 'relative' });
+  const [showCardDeleteConfirm, setShowCardDeleteConfirm] = useState(false);
 
   const handleSave = () => {
     if (!newDebt.person || !newDebt.amount) return;
@@ -893,7 +949,7 @@ export const DebtsView = () => {
     // Update local state to reflect payment
     setEditDebt({
       ...editDebt,
-      payments: [...editDebt.payments, { id: Date.now().toString(), amount, date: new Date().toISOString() }]
+      payments: [...editDebt.payments, { id: Date.now().toString(), amount, date: dateToISO(getTodayStr(timezone)) }]
     });
   };
 
@@ -1086,6 +1142,429 @@ export const DebtsView = () => {
           </div>
         )}
       </Modal>
+
+      {/* ========== CREDIT CARDS SECTION ========== */}
+      <div className="flex justify-between items-center mt-12">
+        <h2 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight flex items-center gap-3">
+          <CreditCardIcon className="w-6 h-6 text-brand-500" />
+          {t('cc.title')}
+        </h2>
+        <Button onClick={() => setIsCardModalOpen(true)} className="bg-brand-500/10 text-brand-600 border border-brand-500/20 hover:bg-brand-500/20">
+          <Plus className="w-4 h-4" />
+          {t('cc.add')}
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {creditCards.map(card => {
+          const available = card.creditLimit - card.usedAmount;
+          const utilization = (card.usedAmount / card.creditLimit) * 100;
+          const utilizationColor = utilization > 80 ? 'text-red-500' : utilization > 50 ? 'text-amber-500' : 'text-green-500';
+          const barColor = utilization > 80 ? 'bg-red-500' : utilization > 50 ? 'bg-amber-500' : 'bg-brand-500';
+
+          return (
+            <Card
+              key={card.id}
+              className="cursor-pointer hover:border-brand-500/30 transition-all relative overflow-hidden"
+              onClick={() => {
+                // Calculate real usedAmount from transactions
+                const cardTxs = transactions.filter(tx => tx.creditCardId === card.id);
+                let realUsed = 0;
+                for (const tx of cardTxs) {
+                  if (tx.category === 'Card Payment') realUsed -= tx.amount;
+                  else realUsed += tx.amount;
+                }
+                realUsed = Math.max(0, Math.min(realUsed, card.creditLimit));
+                const fresh = { ...card, usedAmount: realUsed };
+                // Also sync the stored value
+                if (card.usedAmount !== realUsed) updateCreditCard(card.id, { usedAmount: realUsed });
+                setEditCard(fresh);
+                setCardPayAmount('');
+                setCardChargeAmount('');
+                setCardChargeDate(getTodayStr(timezone));
+                setCardPayDate(getTodayStr(timezone));
+                setCardPayAccountId('');
+                setIsEditingCardInfo(false);
+                setShowCardDeleteConfirm(false);
+                setEditCardForm({ name: fresh.name, creditLimit: String(fresh.creditLimit), currency: fresh.currency, cutoffDay: fresh.cutoffDay ? String(fresh.cutoffDay) : '', cutoffMode: fresh.cutoffMode || 'fixed', paymentDay: fresh.paymentDay ? String(fresh.paymentDay) : '', paymentMode: fresh.paymentMode || 'fixed' });
+              }}
+            >
+              <div className={`absolute top-0 right-0 w-24 h-24 rounded-full blur-[40px] pointer-events-none ${utilization > 80 ? 'bg-red-500/10' : 'bg-brand-500/10'}`} />
+              <div className="flex justify-between items-start mb-4 relative z-10">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <CreditCardIcon className="w-4 h-4 text-brand-500" />
+                    <span className="text-xs font-mono text-zinc-400">{card.currency}</span>
+                    {card.cutoffDay && <span className="text-[10px] text-zinc-400">Corte: {card.cutoffDay}</span>}
+                  </div>
+                  <h3 className="font-bold text-lg text-zinc-900 dark:text-white">{card.name}</h3>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] text-zinc-500 uppercase font-bold">{t('cc.available')}</p>
+                  <span className="font-mono font-bold text-lg text-green-600 dark:text-green-400"><Money amount={available} currency={card.currency} /></span>
+                </div>
+              </div>
+
+              <div className="space-y-2 mb-2 relative z-10">
+                <div className="flex justify-between text-xs">
+                  <span className="text-zinc-500">{t('cc.used')}: <Money amount={card.usedAmount} currency={card.currency} /></span>
+                  <span className={`font-bold ${utilizationColor}`}>{utilization.toFixed(0)}%</span>
+                </div>
+                <div className="h-2.5 w-full bg-black/5 dark:bg-white/5 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${barColor} transition-all duration-500`} style={{ width: `${utilization}%` }} />
+                </div>
+                <div className="flex justify-between text-[10px] text-zinc-400">
+                  <span>{t('cc.limit')}: <Money amount={card.creditLimit} currency={card.currency} /></span>
+                </div>
+              </div>
+            </Card>
+          );
+        })}
+        {creditCards.length === 0 && (
+          <div className="lg:col-span-2 py-12 text-center text-zinc-400 text-sm">{t('empty.generic')}</div>
+        )}
+      </div>
+
+      {/* Add Credit Card Modal */}
+      <Modal isOpen={isCardModalOpen} onClose={() => setIsCardModalOpen(false)} title={t('cc.add')}>
+        <div className="space-y-4">
+          <Input
+            label={t('cc.name')}
+            value={newCard.name}
+            onChange={e => setNewCard({ ...newCard, name: e.target.value })}
+            placeholder={language === 'es' ? 'ej. Visa Gold' : 'e.g. Visa Gold'}
+          />
+          <div className="grid grid-cols-2 gap-4">
+            <Input
+              label={t('cc.limit')}
+              type="number"
+              value={newCard.creditLimit}
+              onChange={e => setNewCard({ ...newCard, creditLimit: e.target.value })}
+            />
+            <Select
+              label={language === 'es' ? 'Moneda' : 'Currency'}
+              value={newCard.currency}
+              onChange={v => setNewCard({ ...newCard, currency: v })}
+              options={[{ value: 'COP', label: 'COP' }, { value: 'USD', label: 'USD' }, { value: 'EUR', label: 'EUR' }]}
+            />
+          </div>
+          {/* Cutoff */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest ml-1">{t('cc.cutoff')}</label>
+            <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-black/20 rounded-lg">
+              <button type="button" onClick={() => setNewCard({ ...newCard, cutoffMode: 'fixed' })} className={cn("flex-1 text-[10px] font-bold py-1.5 rounded-md transition-all", newCard.cutoffMode === 'fixed' ? 'bg-white dark:bg-zinc-800 text-brand-600 shadow-sm' : 'text-zinc-500')}>{t('cc.mode_fixed')}</button>
+              <button type="button" onClick={() => setNewCard({ ...newCard, cutoffMode: 'relative' })} className={cn("flex-1 text-[10px] font-bold py-1.5 rounded-md transition-all", newCard.cutoffMode === 'relative' ? 'bg-white dark:bg-zinc-800 text-brand-600 shadow-sm' : 'text-zinc-500')}>{t('cc.mode_relative')}</button>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input type="number" value={newCard.cutoffDay} onChange={e => setNewCard({ ...newCard, cutoffDay: e.target.value })} placeholder={newCard.cutoffMode === 'fixed' ? '1-31' : 'ej. 20'} className="font-mono" />
+              <span className="text-[10px] text-zinc-400 whitespace-nowrap shrink-0">{newCard.cutoffMode === 'fixed' ? t('cc.day_of_month') : t('cc.days_before_payment')}</span>
+            </div>
+          </div>
+          {/* Payment */}
+          <div className="space-y-2">
+            <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest ml-1">{t('cc.payment_day')}</label>
+            <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-black/20 rounded-lg">
+              <button type="button" onClick={() => setNewCard({ ...newCard, paymentMode: 'fixed' })} className={cn("flex-1 text-[10px] font-bold py-1.5 rounded-md transition-all", newCard.paymentMode === 'fixed' ? 'bg-white dark:bg-zinc-800 text-brand-600 shadow-sm' : 'text-zinc-500')}>{t('cc.mode_fixed')}</button>
+              <button type="button" onClick={() => setNewCard({ ...newCard, paymentMode: 'relative' })} className={cn("flex-1 text-[10px] font-bold py-1.5 rounded-md transition-all", newCard.paymentMode === 'relative' ? 'bg-white dark:bg-zinc-800 text-brand-600 shadow-sm' : 'text-zinc-500')}>{t('cc.mode_relative')}</button>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input type="number" value={newCard.paymentDay} onChange={e => setNewCard({ ...newCard, paymentDay: e.target.value })} placeholder={newCard.paymentMode === 'fixed' ? '1-31' : 'ej. 20'} className="font-mono" />
+              <span className="text-[10px] text-zinc-400 whitespace-nowrap shrink-0">{newCard.paymentMode === 'fixed' ? t('cc.day_of_month') : t('cc.days_after_cutoff')}</span>
+            </div>
+          </div>
+          <Button className="w-full mt-4" onClick={() => {
+            if (!newCard.name || !newCard.creditLimit) return;
+            addCreditCard({
+              name: newCard.name,
+              creditLimit: parseFloat(newCard.creditLimit),
+              usedAmount: 0,
+              currency: newCard.currency as any,
+              cutoffDay: newCard.cutoffDay ? parseInt(newCard.cutoffDay) : undefined,
+              cutoffMode: newCard.cutoffMode,
+              paymentDay: newCard.paymentDay ? parseInt(newCard.paymentDay) : undefined,
+              paymentMode: newCard.paymentMode,
+            });
+            setIsCardModalOpen(false);
+            setNewCard({ name: '', creditLimit: '', currency: 'COP', cutoffDay: '', cutoffMode: 'fixed', paymentDay: '', paymentMode: 'fixed' });
+          }}>
+            {t('cc.add')}
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Edit/Manage Credit Card Modal */}
+      <Modal
+        isOpen={!!editCard}
+        onClose={() => { setEditCard(null); setIsEditingCardInfo(false); setShowCardDeleteConfirm(false); }}
+        title={editCard?.name || ''}
+      >
+        {editCard && (
+          <div className="space-y-6">
+            {!isEditingCardInfo ? (
+              <>
+                {/* Summary Cards */}
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="p-3 bg-zinc-50 dark:bg-white/5 rounded-xl text-center">
+                    <p className="text-[10px] text-zinc-500 uppercase mb-1">{t('cc.limit')}</p>
+                    <p className="text-sm font-mono font-bold"><Money amount={editCard.creditLimit} currency={editCard.currency} /></p>
+                  </div>
+                  <div className="p-3 bg-red-500/5 rounded-xl text-center">
+                    <p className="text-[10px] text-zinc-500 uppercase mb-1">{t('cc.used')}</p>
+                    <p className="text-sm font-mono font-bold text-red-500"><Money amount={editCard.usedAmount} currency={editCard.currency} /></p>
+                  </div>
+                  <div className="p-3 bg-green-500/5 rounded-xl text-center">
+                    <p className="text-[10px] text-zinc-500 uppercase mb-1">{t('cc.available')}</p>
+                    <p className="text-sm font-mono font-bold text-green-500"><Money amount={editCard.creditLimit - editCard.usedAmount} currency={editCard.currency} /></p>
+                  </div>
+                </div>
+
+                {/* Utilization Bar */}
+                {(() => {
+                  const util = (editCard.usedAmount / editCard.creditLimit) * 100;
+                  const barCol = util > 80 ? 'bg-red-500' : util > 50 ? 'bg-amber-500' : 'bg-brand-500';
+                  return (
+                    <div className="space-y-1">
+                      <div className="flex justify-between text-xs text-zinc-500">
+                        <span>{t('cc.utilization')}</span>
+                        <span className="font-bold">{util.toFixed(0)}%</span>
+                      </div>
+                      <div className="h-2 w-full bg-black/5 dark:bg-white/5 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${barCol} transition-all`} style={{ width: `${util}%` }} />
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Register Charge */}
+                {editCard.usedAmount < editCard.creditLimit && (
+                  <div className="p-4 border border-dashed border-zinc-300 dark:border-white/10 rounded-xl space-y-3">
+                    <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">{t('cc.charge')}</p>
+                    <Input
+                      type="number"
+                      value={cardChargeAmount}
+                      onChange={e => setCardChargeAmount(e.target.value)}
+                      placeholder={language === 'es' ? 'Monto del cargo' : 'Charge amount'}
+                    />
+                    <DatePicker
+                      value={cardChargeDate}
+                      onChange={setCardChargeDate}
+                      label={language === 'es' ? 'Fecha' : 'Date'}
+                    />
+                    <Button className="w-full" onClick={() => {
+                      const amt = parseFloat(cardChargeAmount);
+                      if (!amt || amt <= 0) return;
+                      chargeCreditCard(editCard.id, amt);
+                      addTransaction({
+                        type: 'expense',
+                        amount: amt,
+                        currency: editCard.currency,
+                        accountId: '',
+                        category: 'Credit Card',
+                        note: `${editCard.name}`,
+                        date: dateToISO(cardChargeDate || getTodayStr(timezone)),
+                        creditCardId: editCard.id,
+                      });
+                      setEditCard({ ...editCard, usedAmount: Math.min(editCard.usedAmount + amt, editCard.creditLimit) });
+                      setCardChargeAmount('');
+                      setCardChargeDate(getTodayStr(timezone));
+                    }} disabled={!cardChargeAmount}>
+                      {language === 'es' ? 'Registrar cargo' : 'Register Charge'}
+                    </Button>
+                  </div>
+                )}
+
+                {/* Make Payment */}
+                {editCard.usedAmount > 0 ? (
+                  <div className="p-4 border border-dashed border-green-500/30 dark:border-green-500/20 rounded-xl space-y-3 bg-green-500/5">
+                    <p className="text-sm font-medium text-green-700 dark:text-green-400">{t('cc.pay')}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      {accounts.map(acc => (
+                        <button
+                          key={acc.id}
+                          onClick={() => setCardPayAccountId(acc.id)}
+                          className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-all border ${
+                            cardPayAccountId === acc.id
+                              ? 'bg-green-500 text-white border-green-500 shadow-sm'
+                              : 'bg-white dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-700 hover:border-green-400'
+                          }`}
+                        >
+                          {acc.name}
+                        </button>
+                      ))}
+                    </div>
+                    <Input
+                      type="number"
+                      value={cardPayAmount}
+                      onChange={e => setCardPayAmount(e.target.value)}
+                      placeholder={language === 'es' ? 'Monto del pago' : 'Payment amount'}
+                    />
+                    <DatePicker
+                      value={cardPayDate}
+                      onChange={setCardPayDate}
+                      label={language === 'es' ? 'Fecha' : 'Date'}
+                    />
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      className="w-full"
+                      onClick={() => setCardPayAmount(editCard.usedAmount.toString())}
+                    >
+                      {t('cc.pay_full')} (<Money amount={editCard.usedAmount} currency={editCard.currency} />)
+                    </Button>
+                    <Button className="w-full" onClick={() => {
+                      const amt = parseFloat(cardPayAmount);
+                      if (!amt || amt <= 0 || !cardPayAccountId) return;
+                      payCreditCard(editCard.id, amt);
+                      addTransaction({
+                        type: 'expense',
+                        amount: amt,
+                        currency: editCard.currency,
+                        accountId: cardPayAccountId,
+                        category: 'Card Payment',
+                        note: `${editCard.name}`,
+                        date: dateToISO(cardPayDate || getTodayStr(timezone)),
+                        creditCardId: editCard.id,
+                      });
+                      setEditCard({ ...editCard, usedAmount: Math.max(editCard.usedAmount - amt, 0) });
+                      setCardPayAmount('');
+                      setCardPayAccountId('');
+                      setCardPayDate(getTodayStr(timezone));
+                    }} disabled={!cardPayAmount || !cardPayAccountId} variant="secondary">
+                      {language === 'es' ? 'Realizar pago' : 'Make Payment'}
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-green-500/10 border border-green-500/20 rounded-xl text-center">
+                    <p className="text-green-600 font-bold">{t('cc.no_balance')}</p>
+                  </div>
+                )}
+
+                {/* Card Movement History */}
+                {(() => {
+                  const cardTxs = transactions.filter(tx => tx.creditCardId === editCard.id).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10);
+                  return (
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{t('cc.history')}</p>
+                      {cardTxs.length === 0 ? (
+                        <p className="text-xs text-zinc-400 italic py-2">{t('cc.no_history')}</p>
+                      ) : (
+                        <div className="max-h-40 overflow-y-auto space-y-1 custom-scrollbar">
+                          {cardTxs.map(tx => (
+                            <div key={tx.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-zinc-50 dark:bg-white/5 text-xs">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tx.category === 'Card Payment' ? 'bg-green-500' : 'bg-red-500'}`} />
+                                <span className="text-zinc-600 dark:text-zinc-300 truncate">{tx.category === 'Card Payment' ? (language === 'es' ? 'Pago' : 'Payment') : tx.note || tx.category}</span>
+                                <span className="text-zinc-400 shrink-0">{new Date(tx.date).toLocaleDateString(undefined, { timeZone: 'UTC', month: 'short', day: 'numeric' })}</span>
+                              </div>
+                              <span className={`font-mono font-bold shrink-0 ml-2 ${tx.category === 'Card Payment' ? 'text-green-600 dark:text-green-400' : 'text-zinc-900 dark:text-white'}`}>
+                                {tx.category === 'Card Payment' ? '-' : '+'}<Money amount={tx.amount} currency={tx.currency} />
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Card info & actions */}
+                <div className="flex items-center justify-between text-xs text-zinc-400 pt-2 border-t border-zinc-100 dark:border-white/5">
+                  <div className="flex gap-4 flex-wrap">
+                    {editCard.cutoffDay != null && <span>{t('cc.cutoff')}: {editCard.cutoffDay} {editCard.cutoffMode === 'relative' ? t('cc.days_before_payment') : t('cc.day_of_month')}</span>}
+                    {editCard.paymentDay != null && <span>{t('cc.payment_day')}: {editCard.paymentDay} {editCard.paymentMode === 'relative' ? t('cc.days_after_cutoff') : t('cc.day_of_month')}</span>}
+                  </div>
+                </div>
+
+                {showCardDeleteConfirm ? (
+                  <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 space-y-3">
+                    <p className="text-sm text-red-600 dark:text-red-400 font-medium">{t('cc.confirm_delete')}</p>
+                    <div className="flex gap-3">
+                      <Button variant="ghost" size="sm" className="flex-1" onClick={() => setShowCardDeleteConfirm(false)}>{t('act.cancel')}</Button>
+                      <Button variant="danger" size="sm" className="flex-1" onClick={() => { deleteCreditCard(editCard.id); setEditCard(null); }}>
+                        <Trash2 className="w-3.5 h-3.5" /> {t('act.delete')}
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex gap-3">
+                    <Button variant="ghost" size="sm" onClick={() => setShowCardDeleteConfirm(true)} className="text-red-500 hover:bg-red-500/10">
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                    <Button variant="ghost" size="sm" className="flex-1" onClick={() => setIsEditingCardInfo(true)}>
+                      <Pencil className="w-3.5 h-3.5" /> {language === 'es' ? 'Editar Tarjeta' : 'Edit Card'}
+                    </Button>
+                  </div>
+                )}
+              </>
+            ) : (
+              /* Edit Card Info Form */
+              <div className="space-y-4">
+                <Input
+                  label={t('cc.name')}
+                  value={editCardForm.name}
+                  onChange={e => setEditCardForm({ ...editCardForm, name: e.target.value })}
+                />
+                <div className="grid grid-cols-2 gap-4">
+                  <Input
+                    label={t('cc.limit')}
+                    type="number"
+                    value={editCardForm.creditLimit}
+                    onChange={e => setEditCardForm({ ...editCardForm, creditLimit: e.target.value })}
+                  />
+                  <Select
+                    label={language === 'es' ? 'Moneda' : 'Currency'}
+                    value={editCardForm.currency}
+                    onChange={v => setEditCardForm({ ...editCardForm, currency: v })}
+                    options={[{ value: 'COP', label: 'COP' }, { value: 'USD', label: 'USD' }, { value: 'EUR', label: 'EUR' }]}
+                  />
+                </div>
+                {/* Cutoff */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest ml-1">{t('cc.cutoff')}</label>
+                  <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-black/20 rounded-lg">
+                    <button type="button" onClick={() => setEditCardForm({ ...editCardForm, cutoffMode: 'fixed' })} className={cn("flex-1 text-[10px] font-bold py-1.5 rounded-md transition-all", editCardForm.cutoffMode === 'fixed' ? 'bg-white dark:bg-zinc-800 text-brand-600 shadow-sm' : 'text-zinc-500')}>{t('cc.mode_fixed')}</button>
+                    <button type="button" onClick={() => setEditCardForm({ ...editCardForm, cutoffMode: 'relative' })} className={cn("flex-1 text-[10px] font-bold py-1.5 rounded-md transition-all", editCardForm.cutoffMode === 'relative' ? 'bg-white dark:bg-zinc-800 text-brand-600 shadow-sm' : 'text-zinc-500')}>{t('cc.mode_relative')}</button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input type="number" value={editCardForm.cutoffDay} onChange={e => setEditCardForm({ ...editCardForm, cutoffDay: e.target.value })} placeholder={editCardForm.cutoffMode === 'fixed' ? '1-31' : 'ej. 20'} className="font-mono" />
+                    <span className="text-[10px] text-zinc-400 whitespace-nowrap shrink-0">{editCardForm.cutoffMode === 'fixed' ? t('cc.day_of_month') : t('cc.days_before_payment')}</span>
+                  </div>
+                </div>
+                {/* Payment */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest ml-1">{t('cc.payment_day')}</label>
+                  <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-black/20 rounded-lg">
+                    <button type="button" onClick={() => setEditCardForm({ ...editCardForm, paymentMode: 'fixed' })} className={cn("flex-1 text-[10px] font-bold py-1.5 rounded-md transition-all", editCardForm.paymentMode === 'fixed' ? 'bg-white dark:bg-zinc-800 text-brand-600 shadow-sm' : 'text-zinc-500')}>{t('cc.mode_fixed')}</button>
+                    <button type="button" onClick={() => setEditCardForm({ ...editCardForm, paymentMode: 'relative' })} className={cn("flex-1 text-[10px] font-bold py-1.5 rounded-md transition-all", editCardForm.paymentMode === 'relative' ? 'bg-white dark:bg-zinc-800 text-brand-600 shadow-sm' : 'text-zinc-500')}>{t('cc.mode_relative')}</button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input type="number" value={editCardForm.paymentDay} onChange={e => setEditCardForm({ ...editCardForm, paymentDay: e.target.value })} placeholder={editCardForm.paymentMode === 'fixed' ? '1-31' : 'ej. 20'} className="font-mono" />
+                    <span className="text-[10px] text-zinc-400 whitespace-nowrap shrink-0">{editCardForm.paymentMode === 'fixed' ? t('cc.day_of_month') : t('cc.days_after_cutoff')}</span>
+                  </div>
+                </div>
+                <div className="flex gap-3 pt-2">
+                  <Button variant="ghost" className="flex-1" onClick={() => setIsEditingCardInfo(false)}>{t('act.cancel')}</Button>
+                  <Button className="flex-1" onClick={() => {
+                    updateCreditCard(editCard.id, {
+                      name: editCardForm.name,
+                      creditLimit: parseFloat(editCardForm.creditLimit),
+                      currency: editCardForm.currency as any,
+                      cutoffDay: editCardForm.cutoffDay ? parseInt(editCardForm.cutoffDay) : undefined,
+                      cutoffMode: editCardForm.cutoffMode,
+                      paymentDay: editCardForm.paymentDay ? parseInt(editCardForm.paymentDay) : undefined,
+                      paymentMode: editCardForm.paymentMode,
+                    });
+                    setEditCard({ ...editCard, name: editCardForm.name, creditLimit: parseFloat(editCardForm.creditLimit), currency: editCardForm.currency as any, cutoffDay: editCardForm.cutoffDay ? parseInt(editCardForm.cutoffDay) : undefined, cutoffMode: editCardForm.cutoffMode, paymentDay: editCardForm.paymentDay ? parseInt(editCardForm.paymentDay) : undefined, paymentMode: editCardForm.paymentMode });
+                    setIsEditingCardInfo(false);
+                  }}>
+                    {t('act.update')}
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
 };
@@ -1094,9 +1573,27 @@ export const DebtsView = () => {
 export const SettingsView = () => {
   const {
     theme, setTheme, language, setLanguage, currencyBase, setCurrencyBase,
+    timezone, setTimezone,
     privacyMode, togglePrivacy, showCents, toggleShowCents, reduceMotion, toggleReduceMotion,
     resetData, logout, user, t
   } = useApp();
+
+  const resolvedTz = timezone === 'auto' ? Intl.DateTimeFormat().resolvedOptions().timeZone : timezone;
+  const TIMEZONE_OPTIONS = [
+    { value: 'auto', label: `Auto (${Intl.DateTimeFormat().resolvedOptions().timeZone})` },
+    { value: 'America/Bogota', label: 'Colombia (UTC-5)' },
+    { value: 'America/New_York', label: 'US Eastern (UTC-5/-4)' },
+    { value: 'America/Chicago', label: 'US Central (UTC-6/-5)' },
+    { value: 'America/Denver', label: 'US Mountain (UTC-7/-6)' },
+    { value: 'America/Los_Angeles', label: 'US Pacific (UTC-8/-7)' },
+    { value: 'America/Mexico_City', label: 'Mexico (UTC-6)' },
+    { value: 'America/Lima', label: 'Peru (UTC-5)' },
+    { value: 'America/Santiago', label: 'Chile (UTC-3/-4)' },
+    { value: 'America/Argentina/Buenos_Aires', label: 'Argentina (UTC-3)' },
+    { value: 'America/Sao_Paulo', label: 'Brazil (UTC-3)' },
+    { value: 'Europe/Madrid', label: 'Spain (UTC+1/+2)' },
+    { value: 'Europe/London', label: 'UK (UTC+0/+1)' },
+  ];
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -1133,6 +1630,12 @@ export const SettingsView = () => {
               value={currencyBase}
               onChange={(v) => setCurrencyBase(v as any)}
               options={[{ value: 'COP', label: 'COP (Colombian Peso)' }, { value: 'USD', label: 'USD (US Dollar)' }, { value: 'EUR', label: 'EUR (Euro)' }]}
+            />
+            <Select
+              label={t('set.tz')}
+              value={timezone}
+              onChange={(v) => setTimezone(v)}
+              options={TIMEZONE_OPTIONS}
             />
           </div>
 

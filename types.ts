@@ -16,6 +16,7 @@ export interface UserProfile {
   theme: Theme;
   language: Language;
   currencyBase: Currency;
+  timezone: string;
   privacyMode: boolean;
   showCents: boolean;
   reduceMotion: boolean;
@@ -42,6 +43,7 @@ export interface Transaction {
   note: string;
   date: string; // ISO String
   createdAt: number; // Timestamp for 72h rule
+  creditCardId?: string; // Links transaction to a credit card
 }
 
 export interface DebtPayment {
@@ -58,6 +60,19 @@ export interface Debt {
   currency: Currency;
   status: DebtStatus;
   payments: DebtPayment[];
+  createdAt: string;
+}
+
+export interface CreditCard {
+  id: string;
+  name: string;
+  creditLimit: number;
+  usedAmount: number; // How much is currently owed
+  currency: Currency;
+  cutoffDay?: number; // Day of month (1-31) if fixed, or days relative if relative
+  cutoffMode?: 'fixed' | 'relative'; // 'fixed' = day of month, 'relative' = days before payment
+  paymentDay?: number; // Day of month (1-31) if fixed, or days relative if relative
+  paymentMode?: 'fixed' | 'relative'; // 'fixed' = day of month, 'relative' = days after cutoff
   createdAt: string;
 }
 
@@ -96,12 +111,14 @@ export interface AppState {
   theme: Theme;
   language: Language;
   currencyBase: Currency;
+  timezone: string;
   privacyMode: boolean;
   showCents: boolean;
   reduceMotion: boolean;
   accounts: Account[];
   transactions: Transaction[];
   debts: Debt[];
+  creditCards: CreditCard[];
   goals: Goal[];
   budgets: Budget[];
 }
@@ -114,17 +131,28 @@ export interface AppContextType extends AppState {
   setTheme: (theme: Theme) => void;
   setLanguage: (lang: Language) => void;
   setCurrencyBase: (curr: Currency) => void;
+  setTimezone: (tz: string) => void;
   togglePrivacy: () => void;
   toggleShowCents: () => void;
   toggleReduceMotion: () => void;
   setView: (view: ViewState) => void;
   currentView: ViewState;
   addTransaction: (tx: Omit<Transaction, 'id' | 'createdAt'>) => void;
+  updateTransaction: (id: string, data: Partial<Omit<Transaction, 'id' | 'createdAt'>>) => void;
+  deleteTransaction: (id: string) => void;
+  editingTransaction: Transaction | null;
+  setEditingTransaction: (tx: Transaction | null) => void;
   addAccount: (acc: Omit<Account, 'id'>) => void;
   deleteAccount: (id: string) => void;
   updateAccount: (id: string, data: Partial<Account>) => void;
   addDebt: (debt: Omit<Debt, 'id' | 'payments' | 'createdAt'>) => void;
   deleteDebt: (id: string) => void;
+  addCreditCard: (card: Omit<CreditCard, 'id' | 'createdAt'>) => void;
+  updateCreditCard: (id: string, data: Partial<CreditCard>) => void;
+  deleteCreditCard: (id: string) => void;
+  chargeCreditCard: (id: string, amount: number) => void;
+  payCreditCard: (id: string, amount: number) => void;
+  recalcCCBalances: () => void;
   addGoal: (goal: Omit<Goal, 'id'>) => void;
   updateGoal: (id: string, amount: number) => void;
   payDebt: (id: string, amount: number) => void;

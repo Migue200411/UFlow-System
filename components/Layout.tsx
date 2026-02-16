@@ -1,38 +1,38 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { 
-  LayoutDashboard, History, PieChart, Wallet, ShieldAlert, Target, Settings, 
-  Menu, Plus, Eye, EyeOff, Moon, Sun, Sparkles, Loader2
+  LayoutDashboard, History, PieChart, Wallet, ShieldAlert, Target, Settings,
+  Menu, Plus, Eye, EyeOff, Moon, Sun, Sparkles, Loader2, Trash2, Pencil, ArrowRightLeft
 } from 'lucide-react';
-import { cn, processAICommand } from '../utils';
-import { Button, Modal, Input, Select, ToastContainer, Card } from './UIComponents';
-import { TransactionType, Currency } from '../types';
+import { cn, processAICommand, getTodayStr, dateToISO } from '../utils';
+import { Button, Modal, Input, Select, ToastContainer, Card, DatePicker } from './UIComponents';
+import { TransactionType, Currency, Transaction } from '../types';
 
 const NavItem = ({ icon: Icon, label, active, onClick }: any) => (
   <button
     onClick={onClick}
     className={cn(
-      "w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 group relative overflow-hidden",
+      "w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all duration-300 group relative overflow-hidden",
       active 
         ? "text-brand-600 dark:text-brand-400 bg-brand-500/10 shadow-sm" 
         : "text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-50 dark:hover:bg-white/5"
     )}
   >
-    {active && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-brand-500 rounded-r-full shadow-[0_0_10px_rgba(124,92,255,0.6)]" />}
-    <Icon className={cn("w-5 h-5 transition-colors relative z-10", active ? "text-brand-500" : "text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300")} />
+    {active && <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-brand-500 rounded-r-full shadow-[0_0_10px_rgba(124,92,255,0.6)]" />}
+    <Icon className={cn("w-4 h-4 transition-colors relative z-10", active ? "text-brand-500" : "text-zinc-400 group-hover:text-zinc-600 dark:group-hover:text-zinc-300")} />
     <span className="truncate relative z-10">{label}</span>
   </button>
 );
 
 const QuickInputModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
-  const { t, accounts, addTransaction } = useApp();
+  const { t, accounts, addTransaction, timezone } = useApp();
   const [formData, setFormData] = useState({
     type: 'expense' as TransactionType,
     amount: '',
     currency: 'COP' as Currency,
     accountId: accounts[0]?.id || '',
     category: 'Food',
-    date: new Date().toISOString().split('T')[0],
+    date: getTodayStr(timezone),
     note: ''
   });
 
@@ -44,8 +44,17 @@ const QuickInputModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => 
       currency: formData.currency,
       accountId: formData.accountId,
       category: formData.category,
-      date: new Date(formData.date).toISOString(),
+      date: dateToISO(formData.date),
       note: formData.note
+    });
+    setFormData({
+      type: 'expense',
+      amount: '',
+      currency: 'COP',
+      accountId: accounts[0]?.id || '',
+      category: '',
+      date: getTodayStr(timezone),
+      note: ''
     });
     onClose();
   };
@@ -64,20 +73,19 @@ const QuickInputModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => 
               { value: 'adjustment', label: 'Adjustment' },
             ]}
           />
-          <Input 
+          <DatePicker
             label={t('lbl.date')}
-            type="date"
             value={formData.date}
-            onChange={e => setFormData({...formData, date: e.target.value})}
+            onChange={val => setFormData({...formData, date: val})}
           />
         </div>
 
         <div className="grid grid-cols-3 gap-4">
           <div className="col-span-2">
-            <Input 
+            <Input
               label={t('lbl.amount')}
-              type="number" 
-              step="0.01" 
+              type="number"
+              step="0.01"
               required
               value={formData.amount}
               onChange={e => setFormData({...formData, amount: e.target.value})}
@@ -134,7 +142,7 @@ const QuickInputModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => 
 
 // --- CREATE WITH AI MODAL (Creation Only) ---
 const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
-  const { t, addTransaction, addGoal, accounts, setView, addToast } = useApp();
+  const { t, addTransaction, addGoal, accounts, creditCards, chargeCreditCard, payCreditCard, setView, addToast } = useApp();
   const context = useApp();
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -179,12 +187,21 @@ const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () =
 
   const handleConfirm = () => {
     if (resultType === 'transaction' && draftTx) {
+      const amount = parseFloat(draftTx.amount);
       addTransaction({
         ...draftTx,
-        date: new Date(draftTx.date).toISOString(),
-        amount: parseFloat(draftTx.amount) // Ensure number
+        date: dateToISO(draftTx.date),
+        amount,
+        creditCardId: draftTx.creditCardId || undefined,
       });
-      // Redirect to History
+      // Handle credit card action
+      if (draftTx.creditCardId && draftTx.creditCardAction) {
+        if (draftTx.creditCardAction === 'charge') {
+          chargeCreditCard(draftTx.creditCardId, amount);
+        } else if (draftTx.creditCardAction === 'pay') {
+          payCreditCard(draftTx.creditCardId, amount);
+        }
+      }
       setView('history');
     } else if (resultType === 'goal' && draftGoal) {
       addGoal({
@@ -254,11 +271,10 @@ const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () =
                       onChange={v => setDraftTx({...draftTx, type: v})}
                       options={[{value:'expense',label:'Expense'},{value:'income',label:'Income'},{value:'adjustment',label:'Adjustment'}]}
                    />
-                   <Input 
+                   <DatePicker
                       label="Date"
-                      type="date"
                       value={draftTx.date}
-                      onChange={e => setDraftTx({...draftTx, date: e.target.value})}
+                      onChange={v => setDraftTx({...draftTx, date: v})}
                    />
                  </div>
                  <div className="grid grid-cols-3 gap-3">
@@ -284,11 +300,19 @@ const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () =
                     onChange={v => setDraftTx({...draftTx, accountId: v})}
                     options={accounts.map(acc => ({ value: acc.id, label: acc.name }))}
                  />
-                 <Input 
+                 <Input
                     label="Category"
                     value={draftTx.category}
                     onChange={e => setDraftTx({...draftTx, category: e.target.value})}
                  />
+                 {draftTx.creditCardId && (() => {
+                   const card = creditCards.find((c: any) => c.id === draftTx.creditCardId);
+                   return card ? (
+                     <div className={`flex items-center gap-2 px-3 py-2 rounded-xl border text-xs font-bold ${draftTx.creditCardAction === 'pay' ? 'bg-green-500/10 border-green-500/20 text-green-600 dark:text-green-400' : 'bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400'}`}>
+                       <span>{draftTx.creditCardAction === 'pay' ? '💳 Pago →' : '💳 Cargo →'} {card.name}</span>
+                     </div>
+                   ) : null;
+                 })()}
               </>
             )}
 
@@ -330,11 +354,284 @@ const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () =
   );
 };
 
+// --- EDIT TRANSACTION MODAL (72h Window) ---
+const EditTransactionModal = () => {
+  const { t, accounts, editingTransaction, setEditingTransaction, updateTransaction, deleteTransaction } = useApp();
+  const [formData, setFormData] = useState({
+    type: 'expense' as TransactionType,
+    amount: '',
+    currency: 'COP' as Currency,
+    accountId: '',
+    category: '',
+    date: '',
+    note: ''
+  });
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  useEffect(() => {
+    if (editingTransaction) {
+      setFormData({
+        type: editingTransaction.type,
+        amount: String(editingTransaction.amount),
+        currency: editingTransaction.currency,
+        accountId: editingTransaction.accountId,
+        category: editingTransaction.category,
+        date: editingTransaction.date.split('T')[0],
+        note: editingTransaction.note
+      });
+      setShowDeleteConfirm(false);
+    }
+  }, [editingTransaction]);
+
+  const handleClose = () => {
+    setEditingTransaction(null);
+    setShowDeleteConfirm(false);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTransaction) return;
+    updateTransaction(editingTransaction.id, {
+      type: formData.type,
+      amount: parseFloat(formData.amount),
+      currency: formData.currency,
+      accountId: formData.accountId,
+      category: formData.category,
+      date: dateToISO(formData.date),
+      note: formData.note
+    });
+    handleClose();
+  };
+
+  const handleDelete = () => {
+    if (!editingTransaction) return;
+    deleteTransaction(editingTransaction.id);
+    handleClose();
+  };
+
+  const timeLeft = editingTransaction ? Math.max(0, (72 * 60 * 60 * 1000) - (Date.now() - editingTransaction.createdAt)) : 0;
+  const hoursLeft = Math.floor(timeLeft / (60 * 60 * 1000));
+  const minutesLeft = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000));
+
+  return (
+    <Modal isOpen={!!editingTransaction} onClose={handleClose} title={t('act.edit')}>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        {/* Time remaining indicator */}
+        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-brand-500/10 border border-brand-500/20">
+          <Pencil className="w-3.5 h-3.5 text-brand-500" />
+          <span className="text-xs font-mono font-bold text-brand-500 tracking-wide">
+            {hoursLeft}h {minutesLeft}m remaining
+          </span>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Select
+            label={t('lbl.type')}
+            value={formData.type}
+            onChange={val => setFormData({...formData, type: val as TransactionType})}
+            options={[
+              { value: 'expense', label: 'Expense' },
+              { value: 'income', label: 'Income' },
+              { value: 'adjustment', label: 'Adjustment' },
+            ]}
+          />
+          <DatePicker
+            label={t('lbl.date')}
+            value={formData.date}
+            onChange={val => setFormData({...formData, date: val})}
+          />
+        </div>
+
+        <div className="grid grid-cols-3 gap-4">
+          <div className="col-span-2">
+            <Input
+              label={t('lbl.amount')}
+              type="number"
+              step="0.01"
+              required
+              value={formData.amount}
+              onChange={e => setFormData({...formData, amount: e.target.value})}
+              placeholder="0.00"
+              className="font-mono text-lg tracking-wider font-bold"
+            />
+          </div>
+          <Select
+            label="Currency"
+            value={formData.currency}
+            onChange={val => setFormData({...formData, currency: val as Currency})}
+            options={[
+              { value: 'COP', label: 'COP' },
+              { value: 'USD', label: 'USD' },
+              { value: 'EUR', label: 'EUR' }
+            ]}
+          />
+        </div>
+
+        <Select
+          label={t('lbl.account')}
+          value={formData.accountId}
+          onChange={val => setFormData({...formData, accountId: val})}
+          options={accounts.map(acc => ({ value: acc.id, label: `${acc.name} (${acc.currency})` }))}
+        />
+
+        <Input
+          label={t('lbl.category')}
+          list="edit-categories"
+          value={formData.category}
+          onChange={e => setFormData({...formData, category: e.target.value})}
+          placeholder="e.g. Food, Rent"
+        />
+        <datalist id="edit-categories">
+          <option value="Food" /><option value="Rent" /><option value="Transport" />
+          <option value="Salary" /><option value="Business" /><option value="Entertainment" />
+        </datalist>
+
+        <Input
+          label={t('lbl.desc')}
+          value={formData.note}
+          onChange={e => setFormData({...formData, note: e.target.value})}
+          placeholder="Optional note..."
+        />
+
+        {/* Delete confirmation */}
+        {showDeleteConfirm ? (
+          <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20 space-y-3">
+            <p className="text-sm text-red-600 dark:text-red-400 font-medium">{t('act.confirm_delete')}</p>
+            <div className="flex gap-3">
+              <Button type="button" variant="ghost" size="sm" className="flex-1" onClick={() => setShowDeleteConfirm(false)}>{t('act.cancel')}</Button>
+              <Button type="button" variant="danger" size="sm" className="flex-1" onClick={handleDelete}>
+                <Trash2 className="w-3.5 h-3.5" />
+                {t('act.delete')}
+              </Button>
+            </div>
+          </div>
+        ) : null}
+
+        <div className="pt-4 flex gap-3 border-t border-zinc-100 dark:border-white/10 mt-2">
+          {!showDeleteConfirm && (
+            <Button type="button" variant="ghost" onClick={() => setShowDeleteConfirm(true)} className="text-red-500 hover:text-red-600 hover:bg-red-500/10">
+              <Trash2 className="w-4 h-4" />
+            </Button>
+          )}
+          <Button type="button" variant="ghost" className="flex-1" onClick={handleClose}>{t('act.cancel')}</Button>
+          <Button type="submit" className="flex-1">{t('act.update')}</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
+// --- TRANSFER BETWEEN ACCOUNTS MODAL ---
+const TransferModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
+  const context = useApp();
+  const { t, accounts, addTransaction } = context;
+  const [fromId, setFromId] = useState('');
+  const [toId, setToId] = useState('');
+  const [amount, setAmount] = useState('');
+  const [note, setNote] = useState('');
+  const [date, setDate] = useState(getTodayStr(context.timezone));
+
+  useEffect(() => {
+    if (isOpen && accounts.length >= 2) {
+      setFromId(accounts[0]?.id || '');
+      setToId(accounts[1]?.id || '');
+      setAmount('');
+      setNote('');
+      setDate(getTodayStr(context.timezone));
+    }
+  }, [isOpen, accounts]);
+
+  const fromAccount = accounts.find(a => a.id === fromId);
+
+  const handleTransfer = () => {
+    const amt = parseFloat(amount);
+    if (!amt || amt <= 0 || fromId === toId || !fromId || !toId) return;
+
+    const currency = fromAccount?.currency || ('COP' as Currency);
+
+    const transferDate = date ? dateToISO(date) : dateToISO(getTodayStr(context.timezone));
+
+    // Expense from source
+    addTransaction({
+      type: 'expense',
+      amount: amt,
+      currency,
+      accountId: fromId,
+      category: 'Transfer',
+      note: note || `→ ${accounts.find(a => a.id === toId)?.name || ''}`,
+      date: transferDate,
+    });
+
+    // Income to destination
+    addTransaction({
+      type: 'income',
+      amount: amt,
+      currency,
+      accountId: toId,
+      category: 'Transfer',
+      note: note || `← ${fromAccount?.name || ''}`,
+      date: transferDate,
+    });
+
+    onClose();
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title={t('tf.title')}>
+      <div className="space-y-5">
+        <Select
+          label={t('tf.from')}
+          value={fromId}
+          onChange={setFromId}
+          options={accounts.map(a => ({ value: a.id, label: `${a.name} (${a.currency})` }))}
+        />
+        <Select
+          label={t('tf.to')}
+          value={toId}
+          onChange={setToId}
+          options={accounts.map(a => ({ value: a.id, label: `${a.name} (${a.currency})` }))}
+        />
+        {fromId === toId && fromId && (
+          <p className="text-xs text-red-500 font-medium">{t('tf.same_error')}</p>
+        )}
+        <Input
+          label={`${t('tf.amount')} (${fromAccount?.currency || 'COP'})`}
+          type="number"
+          value={amount}
+          onChange={e => setAmount(e.target.value)}
+          placeholder="0.00"
+          className="font-mono font-bold"
+        />
+        <Input
+          label={t('lbl.desc')}
+          value={note}
+          onChange={e => setNote(e.target.value)}
+          placeholder={t('lbl.desc')}
+        />
+        <DatePicker
+          label={t('lbl.date')}
+          value={date}
+          onChange={setDate}
+        />
+        <Button
+          className="w-full"
+          onClick={handleTransfer}
+          disabled={!amount || !fromId || !toId || fromId === toId}
+        >
+          <ArrowRightLeft className="w-4 h-4" />
+          {t('tf.execute')}
+        </Button>
+      </div>
+    </Modal>
+  );
+};
+
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { currentView, setView, t, privacyMode, togglePrivacy, theme, setTheme, toasts, removeToast } = useApp();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isQuickInputOpen, setQuickInputOpen] = useState(false);
   const [isAiCreateOpen, setAiCreateOpen] = useState(false);
+  const [isTransferOpen, setTransferOpen] = useState(false);
 
   const toggleTheme = () => setTheme(theme === 'dark' ? 'light' : 'dark');
 
@@ -352,18 +649,18 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   return (
     <div className="flex h-screen bg-light-bg dark:bg-dark-bg overflow-hidden font-sans selection:bg-brand-500/30 selection:text-white">
       {/* Sidebar Desktop - Floating Glass with Shadow */}
-      <aside className="hidden md:flex w-64 flex-col fixed left-4 top-4 bottom-4 rounded-3xl glass-panel z-40 shadow-premium dark:shadow-glass">
-        <div className="p-8">
-          <h1 className="text-2xl font-black tracking-tight text-zinc-900 dark:text-white font-mono flex items-center gap-2.5">
-            <div className="w-4 h-4 bg-brand-500 rounded-sm rotate-45 shadow-[0_0_10px_rgba(124,92,255,0.8)]" />
+      <aside className="hidden md:flex w-52 flex-col fixed left-4 top-4 bottom-4 rounded-3xl glass-panel z-40 shadow-premium dark:shadow-glass">
+        <div className="p-5">
+          <h1 className="text-lg font-black tracking-tight text-zinc-900 dark:text-white font-mono flex items-center gap-2">
+            <div className="w-3.5 h-3.5 bg-brand-500 rounded-sm rotate-45 shadow-[0_0_10px_rgba(124,92,255,0.8)]" />
             UFLOW
           </h1>
-          <div className="mt-2 flex items-center gap-2">
+          <div className="mt-1.5 flex items-center gap-1.5">
              <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-             <p className="text-[10px] text-zinc-400 font-mono tracking-widest uppercase">System Online</p>
+             <p className="text-[9px] text-zinc-400 font-mono tracking-widest uppercase">System Online</p>
           </div>
         </div>
-        <nav className="flex-1 px-4 space-y-2 overflow-y-auto py-2 custom-scrollbar">
+        <nav className="flex-1 px-3 space-y-1 overflow-y-auto py-1 custom-scrollbar">
           {NAV_ITEMS.map(item => (
             <NavItem 
               key={item.id} 
@@ -374,13 +671,13 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             />
           ))}
         </nav>
-        <div className="p-6">
-          <div className="bg-zinc-100 dark:bg-white/5 rounded-2xl p-4 border border-zinc-200 dark:border-white/5 backdrop-blur-md">
-             <div className="flex justify-between items-center mb-2">
-               <span className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">Storage</span>
-               <span className="text-[10px] font-mono text-brand-500">12%</span>
+        <div className="p-3">
+          <div className="bg-zinc-100 dark:bg-white/5 rounded-xl p-3 border border-zinc-200 dark:border-white/5 backdrop-blur-md">
+             <div className="flex justify-between items-center mb-1.5">
+               <span className="text-[9px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest">Storage</span>
+               <span className="text-[9px] font-mono text-brand-500">12%</span>
              </div>
-             <div className="h-1.5 w-full bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+             <div className="h-1 w-full bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
                <div className="h-full bg-brand-500 w-[12%] shadow-[0_0_10px_rgba(124,92,255,0.5)]" />
              </div>
           </div>
@@ -388,39 +685,44 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
       </aside>
 
       {/* Main Content - Padded for floating sidebar */}
-      <main className="flex-1 flex flex-col relative min-w-0 md:pl-72 transition-all duration-300">
-        
+      <main className="flex-1 flex flex-col relative min-w-0 md:pl-60 transition-all duration-300">
+
         {/* Header - Floating Glass */}
-        <header className="h-20 flex items-center justify-between px-6 sm:px-8 z-30 sticky top-0 mt-4 mx-4 sm:mx-8 rounded-2xl glass-panel shadow-premium dark:shadow-glass-sm mb-6">
-          <div className="flex items-center gap-4">
-            <button className="md:hidden p-2 text-zinc-600 dark:text-zinc-300 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/10 transition-colors" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
-              <Menu className="w-6 h-6" />
+        <header className="h-14 flex items-center justify-between px-4 sm:px-6 z-30 sticky top-0 mt-3 mx-3 sm:mx-6 rounded-2xl glass-panel shadow-premium dark:shadow-glass-sm mb-4">
+          <div className="flex items-center gap-3">
+            <button className="md:hidden p-1.5 text-zinc-600 dark:text-zinc-300 rounded-xl hover:bg-zinc-100 dark:hover:bg-white/10 transition-colors" onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}>
+              <Menu className="w-5 h-5" />
             </button>
-            <h2 className="text-xl font-bold text-zinc-900 dark:text-white tracking-tight">
+            <h2 className="text-base font-bold text-zinc-900 dark:text-white tracking-tight">
               {NAV_ITEMS.find(n => n.id === currentView)?.label}
             </h2>
           </div>
           
-          <div className="flex items-center gap-2 sm:gap-4">
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {/* Create with AI Button */}
-            <Button 
-               variant="primary" 
+            <Button
+               variant="primary"
+               size="sm"
                className="hidden md:flex bg-gradient-to-r from-violet-600 to-fuchsia-600 border-none shadow-neon"
                onClick={() => setAiCreateOpen(true)}
             >
-               <Sparkles className="w-4 h-4" />
+               <Sparkles className="w-3.5 h-3.5" />
                <span className="hidden lg:inline">{t('act.create_ai')}</span>
             </Button>
 
             <Button variant="icon" onClick={togglePrivacy} title="Toggle Privacy">
-              {privacyMode ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              {privacyMode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
             </Button>
             <Button variant="icon" onClick={toggleTheme} className="hidden sm:flex">
-              {theme === 'dark' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
+              {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
             </Button>
-            <div className="h-8 w-px bg-zinc-200 dark:bg-white/10 mx-2" />
-            <Button onClick={() => setQuickInputOpen(true)} className="rounded-xl shadow-neon hover:shadow-neon-sm transition-shadow">
-              <Plus className="w-4 h-4" />
+            <div className="h-6 w-px bg-zinc-200 dark:bg-white/10 mx-1" />
+            <Button variant="secondary" size="sm" onClick={() => setTransferOpen(true)} className="rounded-xl">
+              <ArrowRightLeft className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{t('act.transfer')}</span>
+            </Button>
+            <Button size="sm" onClick={() => setQuickInputOpen(true)} className="rounded-xl shadow-neon hover:shadow-neon-sm transition-shadow">
+              <Plus className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">New Entry</span>
             </Button>
           </div>
@@ -429,12 +731,12 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         {/* Mobile Nav Drawer */}
         {isMobileMenuOpen && (
            <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-md md:hidden animate-in fade-in" onClick={() => setIsMobileMenuOpen(false)}>
-             <div className="w-72 h-full glass-panel border-r border-white/10 p-6 flex flex-col animate-in slide-in-from-left duration-300 shadow-2xl" onClick={e => e.stopPropagation()}>
-                <div className="mb-8 px-2 flex items-center gap-3">
-                   <div className="w-5 h-5 bg-brand-500 rounded-sm rotate-45 shadow-[0_0_15px_rgba(124,92,255,0.8)]" />
-                   <h1 className="text-2xl font-bold font-mono text-zinc-900 dark:text-white">UFLOW</h1>
+             <div className="w-60 h-full glass-panel border-r border-white/10 p-5 flex flex-col animate-in slide-in-from-left duration-300 shadow-2xl" onClick={e => e.stopPropagation()}>
+                <div className="mb-6 px-2 flex items-center gap-2">
+                   <div className="w-4 h-4 bg-brand-500 rounded-sm rotate-45 shadow-[0_0_15px_rgba(124,92,255,0.8)]" />
+                   <h1 className="text-lg font-bold font-mono text-zinc-900 dark:text-white">UFLOW</h1>
                 </div>
-                <nav className="space-y-2">
+                <nav className="space-y-1">
                   {NAV_ITEMS.map(item => (
                     <NavItem 
                       key={item.id} 
@@ -450,8 +752,8 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         )}
 
         {/* Scrollable View Area */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-8 pb-24 md:pb-8 relative scroll-smooth">
-          <div className="max-w-7xl mx-auto space-y-8">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6 pb-24 md:pb-6 relative scroll-smooth">
+          <div className="max-w-7xl mx-auto space-y-5">
              {children}
           </div>
         </div>
@@ -462,6 +764,8 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 
       <QuickInputModal isOpen={isQuickInputOpen} onClose={() => setQuickInputOpen(false)} />
       <CreateWithAIModal isOpen={isAiCreateOpen} onClose={() => setAiCreateOpen(false)} />
+      <EditTransactionModal />
+      <TransferModal isOpen={isTransferOpen} onClose={() => setTransferOpen(false)} />
     </div>
   );
 };

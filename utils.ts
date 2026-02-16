@@ -56,6 +56,17 @@ export const cn = (...classes: (string | undefined | null | false)[]) => {
 
 export const generateId = () => Math.random().toString(36).substring(2, 9);
 
+/** Returns today's date as YYYY-MM-DD in the given timezone */
+export const getTodayStr = (timezone?: string): string => {
+  const tz = (!timezone || timezone === 'auto') ? Intl.DateTimeFormat().resolvedOptions().timeZone : timezone;
+  return new Date().toLocaleDateString('en-CA', { timeZone: tz });
+};
+
+/** Converts a YYYY-MM-DD string to an ISO string at noon (avoids UTC midnight off-by-one) */
+export const dateToISO = (dateStr: string): string => {
+  return dateStr + 'T12:00:00.000Z';
+};
+
 // --- AI ENGINE: CLAUDE API FIRST + MINIMAL FALLBACK ---
 
 import { callClaudeAPI } from './claude-service';
@@ -156,10 +167,21 @@ const extractCategory = (text: string): string => {
   return 'General';
 };
 
-const extractDate = (text: string): string => {
+const extractDate = (text: string, timezone?: string): string => {
   const lower = text.toLowerCase();
   const now = new Date();
-  const dayOfWeek = now.getDay(); // 0 = Sunday
+  const tz = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  // Get current day-of-week in the user's timezone
+  const dowStr = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(now);
+  const dowMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  const dayOfWeek = dowMap[dowStr] ?? 0;
+
+  // Helper: get YYYY-MM-DD in user's timezone for a date offset by N days
+  const tzDate = (daysAgo: number) => {
+    const d = new Date(now.getTime() - daysAgo * 86400000);
+    return d.toLocaleDateString('en-CA', { timeZone: tz }) + 'T12:00:00.000Z';
+  };
 
   // Day names mapping (Spanish)
   const dayNames: Record<string, number> = {
@@ -167,47 +189,23 @@ const extractDate = (text: string): string => {
     'jueves': 4, 'viernes': 5, 'sabado': 6, 'sábado': 6
   };
 
-  // Check for specific day names: "el domingo", "el sábado", etc.
+  // Check for specific day names
   for (const [dayName, targetDay] of Object.entries(dayNames)) {
     if (lower.includes(dayName)) {
-      // Calculate days ago for the most recent occurrence
       let daysAgo = (dayOfWeek - targetDay + 7) % 7;
-      if (daysAgo === 0) daysAgo = 7; // If same day, assume last week
-
-      const date = new Date(now);
-      date.setDate(now.getDate() - daysAgo);
-      date.setHours(12, 0, 0, 0); // Set to noon to avoid timezone issues
-      return date.toISOString();
+      if (daysAgo === 0) daysAgo = 7;
+      return tzDate(daysAgo);
     }
   }
 
-  // Check for ayer, anteayer
-  if (lower.includes('ayer') || lower.includes('anoche')) {
-    const date = new Date(now);
-    date.setDate(now.getDate() - 1);
-    date.setHours(12, 0, 0, 0);
-    return date.toISOString();
-  }
+  if (lower.includes('ayer') || lower.includes('anoche')) return tzDate(1);
+  if (lower.includes('antier') || lower.includes('anteayer')) return tzDate(2);
 
-  if (lower.includes('antier') || lower.includes('anteayer')) {
-    const date = new Date(now);
-    date.setDate(now.getDate() - 2);
-    date.setHours(12, 0, 0, 0);
-    return date.toISOString();
-  }
-
-  // Check for "hace X días"
   const agoMatch = lower.match(/hace\s+(\d+)\s*d[ií]as?/);
-  if (agoMatch) {
-    const date = new Date(now);
-    date.setDate(now.getDate() - parseInt(agoMatch[1]));
-    date.setHours(12, 0, 0, 0);
-    return date.toISOString();
-  }
+  if (agoMatch) return tzDate(parseInt(agoMatch[1]));
 
   // Default: today at noon
-  now.setHours(12, 0, 0, 0);
-  return now.toISOString();
+  return tzDate(0);
 };
 
 // Simplified analysis - Claude will handle intelligent analysis
@@ -246,7 +244,8 @@ export const processAICommand = async (
         if (claudeResponse.structured?.type === 'transaction' && claudeResponse.structured.data) {
           const data = claudeResponse.structured.data;
           if (!data.date) {
-            data.date = new Date().toISOString();
+            const tz = context.timezone === 'auto' ? Intl.DateTimeFormat().resolvedOptions().timeZone : (context.timezone || 'America/Bogota');
+            data.date = new Date().toLocaleDateString('en-CA', { timeZone: tz }) + 'T12:00:00.000Z';
           }
           if (!data.accountId && context.accounts.length > 0) {
             data.accountId = context.accounts[0].id;
@@ -263,6 +262,26 @@ export const processAICommand = async (
 
   // MINIMAL FALLBACK: Only used when Claude API is unavailable
   return minimalFallback(prompt, context);
+};
+
+// Simple category inference for fallback mode
+const inferCategory = (text: string): string => {
+  const lower = text.toLowerCase();
+  const map: [string[], string][] = [
+    [['uber', 'taxi', 'bus', 'pasaje', 'gasolina', 'peaje', 'transmilenio', 'didi', 'metro'], 'Transport'],
+    [['almuerzo', 'cena', 'desayuno', 'restaurante', 'comida', 'mercado', 'rappi', 'domicilio'], 'Food'],
+    [['ropa', 'zapatos', 'tienda', 'amazon', 'compra'], 'Shopping'],
+    [['arriendo', 'alquiler', 'renta', 'administracion'], 'Rent'],
+    [['luz', 'agua', 'gas', 'internet', 'celular', 'servicios'], 'Utilities'],
+    [['cine', 'netflix', 'spotify', 'fiesta', 'bar', 'juego'], 'Entertainment'],
+    [['medico', 'farmacia', 'medicina', 'gym', 'dentista'], 'Health'],
+    [['universidad', 'curso', 'libro', 'clase'], 'Education'],
+    [['sueldo', 'nomina', 'quincena'], 'Salary'],
+  ];
+  for (const [keywords, category] of map) {
+    if (keywords.some(k => lower.includes(k))) return category;
+  }
+  return 'General';
 };
 
 // Minimal fallback function - keeps it simple when Claude is down
@@ -290,9 +309,9 @@ const minimalFallback = (prompt: string, context: AppContextType): Promise<AIRes
               type: 'expense', // Default to expense
               amount: amount || 0,
               currency: context.currencyBase,
-              category: 'General', // Generic category
+              category: inferCategory(prompt),
               accountId: context.accounts[0]?.id,
-              note: prompt, // Store the original prompt as the note
+              note: '', // Leave empty for user to fill in fallback mode
               date: new Date().toISOString()
             }
           }

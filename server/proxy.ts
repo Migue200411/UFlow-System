@@ -13,36 +13,41 @@ const anthropic = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-// Helper function to calculate dates
-function getDateInfo() {
+// Helper: get YYYY-MM-DD and day-of-week in a given timezone
+function getDateInfo(timezone?: string) {
+    const tz = timezone || 'America/Bogota';
     const now = new Date();
     const dayNames = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
-    const dayOfWeek = now.getDay();
+
+    // Get current date string and day-of-week in the user's timezone
+    const todayStr = now.toLocaleDateString('en-CA', { timeZone: tz }); // YYYY-MM-DD
+    const dayOfWeek = new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'short' }).format(now);
+    const dayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+    const dowIndex = dayMap[dayOfWeek] ?? 0;
 
     const recentDays: Record<string, string> = {};
     for (let i = 0; i < 7; i++) {
-        const daysAgo = (dayOfWeek - i + 7) % 7 || 7;
-        const pastDate = new Date(now);
-        pastDate.setDate(now.getDate() - daysAgo);
-        recentDays[dayNames[i]] = pastDate.toISOString().split('T')[0];
+        const daysAgo = (dowIndex - i + 7) % 7 || 7;
+        const pastDate = new Date(now.getTime() - daysAgo * 86400000);
+        recentDays[dayNames[i]] = pastDate.toLocaleDateString('en-CA', { timeZone: tz });
     }
-    recentDays[dayNames[dayOfWeek]] = now.toISOString().split('T')[0];
+    recentDays[dayNames[dowIndex]] = todayStr;
 
-    const ayer = new Date(now);
-    ayer.setDate(now.getDate() - 1);
+    const yesterdayDate = new Date(now.getTime() - 86400000);
+    const yesterdayStr = yesterdayDate.toLocaleDateString('en-CA', { timeZone: tz });
 
     return {
-        today: now.toISOString().split('T')[0],
-        dayName: dayNames[dayOfWeek],
+        today: todayStr,
+        dayName: dayNames[dowIndex],
         recentDays: {
             ...recentDays,
-            'hoy': now.toISOString().split('T')[0],
-            'ayer': ayer.toISOString().split('T')[0],
+            'hoy': todayStr,
+            'ayer': yesterdayStr,
         }
     };
 }
 
-const buildSystemPrompt = (dateInfo: ReturnType<typeof getDateInfo>, previousSummary?: string, forceCreate?: boolean) => {
+const buildSystemPrompt = (dateInfo: ReturnType<typeof getDateInfo>, previousSummary?: string, forceCreate?: boolean, context?: any) => {
     if (forceCreate) {
         return `Eres UFlow AI en MODO CREACIÓN RÁPIDA. El usuario está usando el botón "Crear con IA" para registrar transacciones o metas de forma rápida.
 
@@ -55,16 +60,60 @@ Fechas recientes: ayer=${dateInfo.recentDays['ayer']}, domingo=${dateInfo.recent
 
 ## REGLAS DE MONTOS COLOMBIANOS
 - "300mil" = 300,000
-- "50k" = 50,000  
+- "50k" = 50,000
 - "2 palos" = 2,000,000
 
-## CATEGORÍAS DISPONIBLES
-Shopping, Food, Transport, Rent, Utilities, Entertainment, Salary, Health, Education, Business, Savings
+## CUENTAS DEL USUARIO
+${context?.accounts?.length ? context.accounts.map((a: any) => `- id: "${a.id}", nombre: "${a.name}", moneda: ${a.currency}`).join('\n') : 'No hay cuentas registradas.'}
+
+Si el usuario menciona una cuenta, billetera o banco, busca la coincidencia más cercana por nombre.
+Ejemplos: "con la de ahorros" → cuenta que contenga "ahorros". "pagué con Nequi" → cuenta "Nequi". "del banco" → cuenta "Bank".
+Si no menciona cuenta, usa la primera cuenta disponible (${context?.accounts?.[0]?.id || ''}).
+
+## TARJETAS DE CRÉDITO DEL USUARIO
+${context?.creditCards?.length ? context.creditCards.map((c: any) => `- id: "${c.id}", nombre: "${c.name}", cupo: ${c.creditLimit} ${c.currency}, usado: ${c.usedAmount}`).join('\n') : 'No hay tarjetas registradas.'}
+
+Si el usuario dice que GASTÓ con una tarjeta de crédito (ej. "gasté 50k con la Nu", "compré con la Visa"), eso es un CARGO a la tarjeta:
+- creditCardId: el id de la tarjeta
+- creditCardAction: "charge"
+- category: la categoría inferida del gasto (NO "Credit Card")
+- accountId: "" (no afecta cuenta bancaria directamente)
+
+Si el usuario dice que PAGÓ la tarjeta (ej. "pagué 500k de la Nu", "abono a la Visa"), eso es un PAGO a la tarjeta:
+- creditCardId: el id de la tarjeta
+- creditCardAction: "pay"
+- category: "Card Payment"
+- accountId: cuenta bancaria desde donde paga (si la menciona, si no, la primera)
+
+## CATEGORÍAS — INFERIR DEL CONTEXTO
+Mapeo de palabras clave a categorías:
+- Transport: uber, taxi, bus, pasajes, gasolina, peajes, parqueadero, transmilenio, didi, metro
+- Food: almuerzo, cena, desayuno, restaurante, comida, mercado, supermercado, rappi, domicilio
+- Shopping: ropa, zapatos, tienda, amazon, compra online, accesorios, electrodomésticos
+- Rent: arriendo, alquiler, renta, administración
+- Utilities: luz, agua, gas, internet, celular, plan, servicios
+- Entertainment: cine, netflix, spotify, fiesta, bar, salida, juego, concierto
+- Health: médico, farmacia, droguería, eps, medicina, consulta, gym, dentista
+- Education: universidad, curso, libro, matrícula, semestre, clase, taller
+- Salary: sueldo, nómina, quincena, pago mensual
+- Business: negocio, inversión, cliente, factura, freelance, proyecto
+- Savings: ahorro, reserva, fondo, CDT
 
 ## DETECCIÓN DE TIPO
 - Palabras como "gasté", "pagué", "compré", "me costó" = expense
 - Palabras como "me pagaron", "recibí", "cobré", "vendí", "sueldo" = income
 - Si no es claro, asume "expense"
+
+## REGLAS PARA EL CAMPO "note"
+- NO copies el texto del usuario tal cual. Parafrasea en una descripción breve y específica (2-4 palabras máximo).
+- Si la nota sería redundante con la categoría, déjala como string vacío "".
+- Ejemplos:
+  - "me gasté 20mil en pasajes" → category: "Transport", note: "" (redundante)
+  - "pagué 50k de almuerzo con el equipo" → category: "Food", note: "Almuerzo con equipo"
+  - "me gasté 300mil en amazon en audífonos" → category: "Shopping", note: "Audífonos Amazon"
+  - "pagué el recibo de luz" → category: "Utilities", note: "Recibo de luz"
+  - "uber al aeropuerto" → category: "Transport", note: "Uber al aeropuerto"
+  - "50k en cena" → category: "Food", note: "" (redundante)
 
 ## FORMATO DE RESPUESTA (SIEMPRE crear)
 {
@@ -77,9 +126,12 @@ Shopping, Food, Transport, Rent, Utilities, Entertainment, Salary, Health, Educa
       "type": "expense" o "income",
       "amount": número,
       "currency": "COP",
-      "category": "categoría inferida",
-      "note": "descripción breve del gasto/ingreso",
-      "date": "YYYY-MM-DDT12:00:00.000Z"
+      "accountId": "id de la cuenta inferida del contexto",
+      "category": "categoría inferida del mapeo",
+      "note": "descripción breve o vacío si redundante",
+      "date": "YYYY-MM-DDT12:00:00.000Z",
+      "creditCardId": "id de la tarjeta si aplica, o null",
+      "creditCardAction": "charge" o "pay" o null
     }
   }
 }
@@ -87,8 +139,9 @@ Shopping, Food, Transport, Rent, Utilities, Entertainment, Salary, Health, Educa
 ## IMPORTANTE
 - SIEMPRE responde con intent: "create" y structured data
 - Si el monto no es claro, usa 0 y el usuario lo editará
-- Infiere la categoría del contexto (ej: "uber" = Transport, "almuerzo" = Food)
-- Infiere la fecha del contexto (ej: "ayer" = fecha de ayer)`;
+- Usa el mapeo de palabras clave para elegir la categoría correcta
+- Infiere la fecha del contexto (ej: "ayer" = fecha de ayer)
+- La nota debe ser específica y breve, NUNCA una copia del mensaje original`;
     }
     
     return `Eres UFlow AI, un asistente financiero personal bilingüe (español/inglés). Tu personalidad es amigable, profesional y empática.
@@ -111,6 +164,15 @@ ${previousSummary}
 - "300mil" = 300,000
 - "50k" = 50,000
 - "2 palos" = 2,000,000
+
+## CUENTAS DEL USUARIO
+${context?.accounts?.length ? context.accounts.map((a: any) => `- id: "${a.id}", nombre: "${a.name}", moneda: ${a.currency}`).join('\n') : 'No hay cuentas registradas.'}
+Si el usuario menciona una cuenta o banco, usa el accountId correspondiente. Si no menciona, usa "${context?.accounts?.[0]?.id || ''}".
+
+## TARJETAS DE CRÉDITO
+${context?.creditCards?.length ? context.creditCards.map((c: any) => `- id: "${c.id}", nombre: "${c.name}", cupo: ${c.creditLimit} ${c.currency}, usado: ${c.usedAmount}`).join('\n') : 'No hay tarjetas registradas.'}
+Si el usuario gasta con tarjeta de crédito → creditCardId + creditCardAction: "charge"
+Si el usuario paga su tarjeta → creditCardId + creditCardAction: "pay", category: "Card Payment"
 
 ## CATEGORÍAS DISPONIBLES
 Shopping, Food, Transport, Rent, Utilities, Entertainment, Salary, Health, Education, Business, Savings
@@ -136,9 +198,12 @@ Para crear transacción (solo cuando el usuario EXPLÍCITAMENTE quiera registrar
       "type": "expense|income",
       "amount": número,
       "currency": "COP",
+      "accountId": "id de la cuenta inferida",
       "category": "categoría",
-      "note": "descripción corta",
-      "date": "YYYY-MM-DDT12:00:00.000Z"
+      "note": "descripción breve o vacío si redundante",
+      "date": "YYYY-MM-DDT12:00:00.000Z",
+      "creditCardId": "id si involucra tarjeta, o null",
+      "creditCardAction": "charge|pay|null"
     }
   }
 }
@@ -153,9 +218,11 @@ Para crear transacción (solo cuando el usuario EXPLÍCITAMENTE quiera registrar
 // Chat endpoint with conversation history
 app.post('/api/chat', async (req, res) => {
     try {
-        const { prompt, context, messages = [], previousSummary, forceCreate } = req.body;
-        const dateInfo = getDateInfo();
-        const systemPrompt = buildSystemPrompt(dateInfo, previousSummary, forceCreate);
+        const { prompt, context, messages = [], previousSummary, forceCreate, dateInfo: clientDateInfo } = req.body;
+        // Prefer client-calculated dateInfo (browser handles timezones reliably)
+        // Fall back to server calculation only if client didn't provide it
+        const dateInfo = clientDateInfo || getDateInfo(context?.timezone);
+        const systemPrompt = buildSystemPrompt(dateInfo, previousSummary, forceCreate, context);
 
         // Build conversation history for Claude
         const conversationHistory: Anthropic.MessageParam[] = [];

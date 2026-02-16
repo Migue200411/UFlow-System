@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '../utils';
 import { useApp } from '../context/AppContext';
-import { Check, ChevronDown, ChevronUp, X, AlertCircle, Info, CheckCircle, Loader2 } from 'lucide-react';
+import { Check, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, X, AlertCircle, Info, CheckCircle, Loader2, Calendar } from 'lucide-react';
 
 // --- Toast Notification (Glass Style) ---
 export interface ToastData {
@@ -38,7 +39,7 @@ export const Card: React.FC<React.HTMLAttributes<HTMLDivElement> & { variant?: '
   return (
     <div 
       className={cn(
-        "relative rounded-2xl p-6 transition-all duration-300 group",
+        "relative rounded-2xl p-4 transition-all duration-300 group",
         "glass-panel hover:border-brand-500/20 hover:shadow-premium",
         variant === 'alert' && "border-red-500/20 bg-red-500/5 dark:bg-red-500/10",
         variant === 'ghost' && "bg-transparent border-transparent shadow-none backdrop-blur-none",
@@ -75,10 +76,10 @@ export const Button: React.FC<ButtonProps> = ({ className, variant = 'primary', 
         
         variant === 'icon' && "bg-white/60 dark:bg-white/5 border border-zinc-200 dark:border-white/5 text-zinc-500 dark:text-zinc-400 hover:text-brand-600 dark:hover:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-500/20 hover:border-brand-500/20 rounded-full aspect-square shadow-sm",
 
-        size === 'sm' && "h-8 px-3 text-xs gap-1.5",
-        size === 'md' && "h-11 px-5 text-sm gap-2",
-        size === 'lg' && "h-13 px-7 text-base gap-2.5",
-        size === 'icon' && "h-10 w-10 p-0",
+        size === 'sm' && "h-7 px-2.5 text-xs gap-1",
+        size === 'md' && "h-9 px-4 text-sm gap-2",
+        size === 'lg' && "h-10 px-5 text-sm gap-2",
+        size === 'icon' && "h-9 w-9 p-0",
         className
       )} 
       {...props} 
@@ -95,7 +96,7 @@ export const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { lab
       {label && <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest ml-1 group-focus-within:text-brand-500 transition-colors">{label}</label>}
       <input 
         className={cn(
-          "w-full h-11 px-4 rounded-xl bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 backdrop-blur-sm",
+          "w-full h-9 px-3 rounded-xl bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 backdrop-blur-sm",
           "text-sm text-zinc-900 dark:text-zinc-100 placeholder-zinc-400/70 focus:outline-none focus:border-brand-500/50 focus:ring-1 focus:ring-brand-500/50 focus:bg-white dark:focus:bg-black/40 transition-all",
           className
         )}
@@ -137,11 +138,11 @@ export const Select: React.FC<SelectProps> = ({ label, value, onChange, options,
         type="button"
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          "w-full h-11 px-4 flex items-center justify-between rounded-xl bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 backdrop-blur-sm",
+          "w-full h-9 px-3 flex items-center justify-between rounded-xl bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 backdrop-blur-sm",
           "text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-brand-500/50 focus:ring-1 focus:ring-brand-500/50 transition-all hover:bg-white dark:hover:bg-white/5 shadow-sm"
         )}
       >
-        <span className="flex items-center gap-3 truncate">
+        <span className="flex items-center gap-2 truncate">
           {selectedOption?.icon && <span className="text-zinc-500 dark:text-zinc-400">{selectedOption.icon}</span>}
           <span className="font-medium">{selectedOption?.label}</span>
         </span>
@@ -155,7 +156,7 @@ export const Select: React.FC<SelectProps> = ({ label, value, onChange, options,
               key={opt.value}
               onClick={() => { onChange(opt.value); setIsOpen(false); }}
               className={cn(
-                "w-full px-3 py-2.5 text-left text-sm flex items-center justify-between rounded-lg transition-all duration-200 group/item",
+                "w-full px-3 py-2 text-left text-sm flex items-center justify-between rounded-lg transition-all duration-200 group/item",
                 value === opt.value 
                   ? "bg-brand-500/10 text-brand-600 dark:text-brand-400 font-semibold" 
                   : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/5"
@@ -241,13 +242,13 @@ export const Modal: React.FC<{ isOpen: boolean; onClose: () => void; title: stri
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-in fade-in duration-300">
       <div className="w-full max-w-md glass-panel rounded-2xl shadow-2xl animate-in zoom-in-95 slide-in-from-bottom-5 duration-300 max-h-[90vh] overflow-y-auto border border-white/20 dark:border-white/10">
-        <div className="flex items-center justify-between p-5 border-b border-zinc-200/50 dark:border-white/10 sticky top-0 bg-white/80 dark:bg-[#151520]/80 backdrop-blur-xl z-10">
-          <h3 className="font-bold text-lg tracking-tight text-zinc-900 dark:text-white">{title}</h3>
-          <button onClick={onClose} className="p-2 hover:bg-zinc-100 dark:hover:bg-white/10 rounded-full transition-colors group">
-            <X className="w-5 h-5 text-zinc-500 group-hover:text-red-500 transition-colors" />
+        <div className="flex items-center justify-between p-4 border-b border-zinc-200/50 dark:border-white/10 sticky top-0 bg-white/80 dark:bg-[#151520]/80 backdrop-blur-xl z-10">
+          <h3 className="font-bold text-base tracking-tight text-zinc-900 dark:text-white">{title}</h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-zinc-100 dark:hover:bg-white/10 rounded-full transition-colors group">
+            <X className="w-4 h-4 text-zinc-500 group-hover:text-red-500 transition-colors" />
           </button>
         </div>
-        <div className="p-6">{children}</div>
+        <div className="p-4">{children}</div>
       </div>
     </div>
   );
@@ -289,5 +290,192 @@ export const Money: React.FC<{ amount: number; currency: string; privacy?: boole
     <span className={cn("font-mono font-semibold tracking-tight whitespace-nowrap safe-text transition-all duration-300", isBlurred && "privacy-blur blur-md opacity-70")}>
       {display}
     </span>
+  );
+};
+
+// --- DatePicker (Glass Calendar) ---
+interface DatePickerProps {
+  label?: string;
+  value: string; // yyyy-MM-dd
+  onChange: (value: string) => void;
+  className?: string;
+}
+
+export const DatePicker: React.FC<DatePickerProps> = ({ label, value, onChange, className }) => {
+  const { language } = useApp();
+  const [isOpen, setIsOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ top: 0, left: 0 });
+
+  const parsed = value ? new Date(value + 'T12:00:00') : new Date();
+  const [viewYear, setViewYear] = useState(parsed.getFullYear());
+  const [viewMonth, setViewMonth] = useState(parsed.getMonth());
+
+  useEffect(() => {
+    if (value) {
+      const d = new Date(value + 'T12:00:00');
+      setViewYear(d.getFullYear());
+      setViewMonth(d.getMonth());
+    }
+  }, [value, isOpen]);
+
+  // Calculate fixed position when opening
+  useEffect(() => {
+    if (isOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const calHeight = 340;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const top = spaceBelow < calHeight ? Math.max(8, rect.top - calHeight - 4) : rect.bottom + 4;
+      const left = Math.min(rect.left, window.innerWidth - 268);
+      setPos({ top, left });
+    }
+  }, [isOpen]);
+
+  // Close on click outside
+  useEffect(() => {
+    const handleClick = (e: MouseEvent) => {
+      const target = e.target as Node;
+      if (
+        triggerRef.current && !triggerRef.current.contains(target) &&
+        dropdownRef.current && !dropdownRef.current.contains(target)
+      ) {
+        setIsOpen(false);
+      }
+    };
+    if (isOpen) document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [isOpen]);
+
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const firstDayOfWeek = new Date(viewYear, viewMonth, 1).getDay();
+
+  const prevMonth = () => {
+    if (viewMonth === 0) { setViewMonth(11); setViewYear(viewYear - 1); }
+    else setViewMonth(viewMonth - 1);
+  };
+  const nextMonth = () => {
+    if (viewMonth === 11) { setViewMonth(0); setViewYear(viewYear + 1); }
+    else setViewMonth(viewMonth + 1);
+  };
+
+  const selectDay = (day: number) => {
+    const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    onChange(dateStr);
+    setIsOpen(false);
+  };
+
+  const monthNames = language === 'es'
+    ? ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+    : ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  const dayLabels = language === 'es'
+    ? ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa', 'Do']
+    : ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'];
+
+  const startOffset = firstDayOfWeek === 0 ? 6 : firstDayOfWeek - 1;
+
+  const displayValue = value
+    ? new Date(value + 'T12:00:00').toLocaleDateString(language === 'es' ? 'es-CO' : 'en-US', { year: 'numeric', month: 'short', day: 'numeric', timeZone: 'UTC' })
+    : '';
+
+  return (
+    <div className={cn("space-y-2 w-full min-w-0 group", className)}>
+      {label && <label className="text-[10px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-widest ml-1 group-focus-within:text-brand-500 transition-colors">{label}</label>}
+      <button
+        ref={triggerRef}
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className={cn(
+          "w-full h-9 px-3 flex items-center justify-between rounded-xl bg-zinc-50 dark:bg-black/20 border border-zinc-200 dark:border-white/10 backdrop-blur-sm",
+          "text-sm text-zinc-900 dark:text-zinc-100 focus:outline-none focus:border-brand-500/50 focus:ring-1 focus:ring-brand-500/50 transition-all hover:bg-white dark:hover:bg-white/5 shadow-sm",
+          !value && "text-zinc-400/70"
+        )}
+      >
+        <span className="font-medium truncate">{displayValue || (language === 'es' ? 'Seleccionar fecha' : 'Select date')}</span>
+        <Calendar className="w-4 h-4 text-zinc-400 shrink-0" />
+      </button>
+
+      {isOpen && createPortal(
+        <div
+          ref={dropdownRef}
+          className="fixed z-[9999] w-[260px] p-3 bg-white/95 dark:bg-[#1A1A25]/95 border border-zinc-200 dark:border-white/10 rounded-2xl shadow-glass backdrop-blur-xl animate-in fade-in zoom-in-95 duration-200 origin-top"
+          style={{ top: pos.top, left: pos.left }}
+        >
+          {/* Header */}
+          <div className="flex items-center justify-between mb-2">
+            <button type="button" onClick={prevMonth} className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-white/10 transition-colors">
+              <ChevronLeft className="w-4 h-4 text-zinc-500" />
+            </button>
+            <span className="text-sm font-bold text-zinc-900 dark:text-white tracking-wide">
+              {monthNames[viewMonth]} {viewYear}
+            </span>
+            <button type="button" onClick={nextMonth} className="p-1.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-white/10 transition-colors">
+              <ChevronRight className="w-4 h-4 text-zinc-500" />
+            </button>
+          </div>
+
+          {/* Day labels */}
+          <div className="grid grid-cols-7 mb-2">
+            {dayLabels.map(d => (
+              <div key={d} className="text-center text-[10px] font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-wider py-1">{d}</div>
+            ))}
+          </div>
+
+          {/* Days grid */}
+          <div className="grid grid-cols-7 gap-0.5">
+            {Array.from({ length: startOffset }).map((_, i) => (
+              <div key={`empty-${i}`} />
+            ))}
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const day = i + 1;
+              const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              const isSelected = dateStr === value;
+              const isToday = dateStr === todayStr;
+
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  onClick={() => selectDay(day)}
+                  className={cn(
+                    "h-8 w-full rounded-lg text-xs font-medium transition-all duration-200 relative",
+                    isSelected
+                      ? "bg-brand-500 text-white shadow-neon font-bold"
+                      : isToday
+                        ? "bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold ring-1 ring-brand-500/30"
+                        : "text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-white/10"
+                  )}
+                >
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Footer */}
+          <div className="flex justify-between items-center mt-3 pt-3 border-t border-zinc-100 dark:border-white/5">
+            <button
+              type="button"
+              onClick={() => { onChange(''); setIsOpen(false); }}
+              className="text-xs font-medium text-zinc-400 hover:text-red-500 transition-colors"
+            >
+              {language === 'es' ? 'Limpiar' : 'Clear'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { onChange(todayStr); setIsOpen(false); }}
+              className="text-xs font-bold text-brand-500 hover:text-brand-400 transition-colors"
+            >
+              {language === 'es' ? 'Hoy' : 'Today'}
+            </button>
+          </div>
+        </div>,
+        document.body
+      )}
+    </div>
   );
 };
