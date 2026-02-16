@@ -198,6 +198,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           language: profile.language,
           currencyBase: profile.currencyBase,
           timezone: profile.timezone || 'auto',
+          privacyMode: profile.privacyMode ?? false,
+          showCents: profile.showCents ?? false,
+          reduceMotion: profile.reduceMotion ?? false,
         }));
       } else {
         const newProfile: UserProfile = {

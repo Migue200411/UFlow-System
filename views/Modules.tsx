@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Card, Button, Input, Select, Badge, Money, Toggle, SegmentedControl, Modal, DatePicker } from '../components/UIComponents';
 import { convertToBase, cn, processAICommand, generateId, getTodayStr, dateToISO } from '../utils';
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid } from 'recharts';
+import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid, BarChart, Bar } from 'recharts';
 import { Moon, Sun, Monitor, Globe, Shield, CreditCard as CreditCardIcon, LogOut, User, Activity, TrendingUp, BarChart3, PieChart as PieIcon, Send, Sparkles, Bot, Wallet, Settings, Trash2, Plus, Pencil } from 'lucide-react';
 import { AIMessage, CreditCard as CreditCardType } from '../types';
 
@@ -184,7 +184,7 @@ export const HistoryView = () => {
 
 // --- ANALYTICS VIEW ---
 export const AnalyticsView = () => {
-  const { transactions, currencyBase, timezone, t, theme, reduceMotion, language } = useApp();
+  const { transactions, creditCards, debts, currencyBase, timezone, t, theme, reduceMotion, language } = useApp();
   const tz = timezone === 'auto' ? Intl.DateTimeFormat().resolvedOptions().timeZone : timezone;
 
   // Month/Year selector state (timezone-aware)
@@ -308,6 +308,117 @@ export const AnalyticsView = () => {
 
   const COLORS = ['#6C4CF1', '#5336D6', '#4C6EF5', '#3B82F6', '#5B8DEF', '#3FA7A3', '#60C2C0', '#9A8FBF', '#D16BA5', '#7C8DB5', '#7E6CD6', '#4A9BE8', '#52B5A8', '#B07DC9', '#6898C4'];
   const isDark = theme === 'dark';
+
+  // --- Credit Card / Debt Chart ---
+  const [ccFilter, setCcFilter] = useState<string>('all');
+
+  // CC chart options: "all" + each card + "debts"
+  const ccFilterOptions = useMemo(() => {
+    const opts: { value: string; label: string }[] = [
+      { value: 'all', label: language === 'es' ? 'Todas las tarjetas' : 'All Cards' },
+    ];
+    creditCards.forEach(c => opts.push({ value: c.id, label: c.name }));
+    opts.push({ value: 'debts', label: language === 'es' ? 'Deudas' : 'Debts' });
+    return opts;
+  }, [creditCards, language]);
+
+  // CC bar chart data: daily charges vs payments for selected month
+  const ccChartData = useMemo(() => {
+    if (ccFilter === 'debts') {
+      // Group debt payments by day
+      const byDay: Record<number, { newDebt: number; payments: number }> = {};
+      debts.forEach(debt => {
+        // New debts created this month
+        const cp = parseDateParts(debt.createdAt);
+        if (cp.month === selectedMonth.month && cp.year === selectedMonth.year) {
+          const day = cp.day;
+          if (!byDay[day]) byDay[day] = { newDebt: 0, payments: 0 };
+          byDay[day].newDebt += convertToBase(debt.totalAmount, debt.currency, currencyBase);
+        }
+        // Debt payments this month
+        debt.payments.forEach(p => {
+          const pp = parseDateParts(p.date);
+          if (pp.month === selectedMonth.month && pp.year === selectedMonth.year) {
+            const day = pp.day;
+            if (!byDay[day]) byDay[day] = { newDebt: 0, payments: 0 };
+            byDay[day].payments += convertToBase(p.amount, debt.currency, currencyBase);
+          }
+        });
+      });
+
+      const points = [];
+      for (let day = 1; day <= daysInMonth; day++) {
+        const d = byDay[day] || { newDebt: 0, payments: 0 };
+        points.push({ day, label: `${day}`, charges: Math.round(d.newDebt), payments: Math.round(d.payments) });
+      }
+      return points;
+    }
+
+    // Credit card mode: filter transactions by card
+    const cardTxs = transactions.filter(tx => {
+      if (!tx.creditCardId) return false;
+      if (ccFilter !== 'all' && tx.creditCardId !== ccFilter) return false;
+      const p = parseDateParts(tx.date);
+      return p.month === selectedMonth.month && p.year === selectedMonth.year;
+    });
+
+    const byDay: Record<number, { charges: number; payments: number }> = {};
+    cardTxs.forEach(tx => {
+      const day = parseDateParts(tx.date).day;
+      if (!byDay[day]) byDay[day] = { charges: 0, payments: 0 };
+      const val = convertToBase(tx.amount, tx.currency, currencyBase);
+      if (tx.category === 'Card Payment') {
+        byDay[day].payments += val;
+      } else {
+        byDay[day].charges += val;
+      }
+    });
+
+    const points = [];
+    for (let day = 1; day <= daysInMonth; day++) {
+      const d = byDay[day] || { charges: 0, payments: 0 };
+      points.push({ day, label: `${day}`, charges: Math.round(d.charges), payments: Math.round(d.payments) });
+    }
+    return points;
+  }, [transactions, debts, creditCards, ccFilter, selectedMonth, daysInMonth, currencyBase]);
+
+  // Totals for the CC/debt chart
+  const ccTotals = useMemo(() => {
+    return ccChartData.reduce((acc, d) => ({
+      charges: acc.charges + d.charges,
+      payments: acc.payments + d.payments,
+    }), { charges: 0, payments: 0 });
+  }, [ccChartData]);
+
+  // Custom tooltip for CC chart
+  const CCTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload;
+      const isDebt = ccFilter === 'debts';
+      return (
+        <div className="bg-white dark:bg-[#0B0B12] border border-zinc-200 dark:border-white/10 p-3 rounded-xl shadow-xl">
+          <p className="text-[10px] uppercase font-bold text-zinc-500 mb-2">
+            {language === 'es' ? 'Día' : 'Day'} {data.day}
+          </p>
+          <div className="space-y-1">
+            <div className="flex justify-between gap-4">
+              <span className="text-xs text-red-500">{isDebt ? (language === 'es' ? 'Nuevas deudas' : 'New debts') : (language === 'es' ? 'Cargos' : 'Charges')}</span>
+              <span className="font-mono text-xs font-bold text-red-600">
+                <Money amount={data.charges} currency={currencyBase} />
+              </span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-xs text-green-500">{language === 'es' ? 'Pagos' : 'Payments'}</span>
+              <span className="font-mono text-xs font-bold text-green-600">
+                <Money amount={data.payments} currency={currencyBase} />
+              </span>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return null;
+  };
 
   // Custom tooltip for Line Chart
   const LineTooltip = ({ active, payload }: any) => {
@@ -529,6 +640,105 @@ export const AnalyticsView = () => {
           </div>
         </Card>
       </div>
+
+      {/* Credit Card / Debt Chart */}
+      <Card className="relative overflow-hidden group border-brand-500/10 hover:border-brand-500/20">
+        <div className="absolute top-0 right-0 p-8 opacity-5 dark:opacity-10 pointer-events-none">
+          <CreditCardIcon className="w-40 h-40 text-brand-500" />
+        </div>
+        <div className="mb-4 relative z-10 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+          <div>
+            <h3 className="font-bold text-xl text-zinc-900 dark:text-white tracking-tight flex items-center gap-2">
+              <CreditCardIcon className="w-5 h-5 text-brand-500" />
+              {language === 'es' ? 'Tarjetas y Deudas' : 'Cards & Debts'}
+            </h3>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 font-mono mt-1">
+              {ccFilter === 'debts'
+                ? (language === 'es' ? 'Deudas adquiridas vs pagos' : 'New debts vs payments')
+                : (language === 'es' ? 'Cargos vs pagos del mes' : 'Charges vs payments this month')}
+            </p>
+          </div>
+          <Select
+            value={ccFilter}
+            onChange={setCcFilter}
+            options={ccFilterOptions}
+            className="!w-auto min-w-[160px]"
+          />
+        </div>
+
+        {/* Summary chips */}
+        <div className="flex flex-wrap gap-3 mb-4 relative z-10">
+          <div className="flex items-center gap-2 bg-red-50 dark:bg-red-500/10 px-3 py-1.5 rounded-lg border border-red-200 dark:border-red-500/20">
+            <div className="w-2.5 h-2.5 rounded-full bg-red-500" />
+            <span className="text-xs font-bold text-red-700 dark:text-red-400">
+              {ccFilter === 'debts' ? (language === 'es' ? 'Nuevas deudas' : 'New debts') : (language === 'es' ? 'Cargos' : 'Charges')}:
+            </span>
+            <span className="text-xs font-mono font-bold text-red-600 dark:text-red-300">
+              <Money amount={ccTotals.charges} currency={currencyBase} />
+            </span>
+          </div>
+          <div className="flex items-center gap-2 bg-green-50 dark:bg-green-500/10 px-3 py-1.5 rounded-lg border border-green-200 dark:border-green-500/20">
+            <div className="w-2.5 h-2.5 rounded-full bg-green-500" />
+            <span className="text-xs font-bold text-green-700 dark:text-green-400">
+              {language === 'es' ? 'Pagos' : 'Payments'}:
+            </span>
+            <span className="text-xs font-mono font-bold text-green-600 dark:text-green-300">
+              <Money amount={ccTotals.payments} currency={currencyBase} />
+            </span>
+          </div>
+          <div className="flex items-center gap-2 bg-zinc-100 dark:bg-white/5 px-3 py-1.5 rounded-lg border border-zinc-200 dark:border-white/10">
+            <span className="text-xs font-bold text-zinc-500 dark:text-zinc-400">
+              {language === 'es' ? 'Neto' : 'Net'}:
+            </span>
+            <span className={cn(
+              "text-xs font-mono font-bold",
+              ccTotals.charges - ccTotals.payments > 0 ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"
+            )}>
+              {ccTotals.charges - ccTotals.payments > 0 ? '+' : ''}
+              <Money amount={ccTotals.charges - ccTotals.payments} currency={currencyBase} />
+            </span>
+          </div>
+        </div>
+
+        {/* Bar chart */}
+        <div className="w-full h-[280px] relative z-10">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={ccChartData} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'} />
+              <XAxis
+                dataKey="label"
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: isDark ? '#71717a' : '#a1a1aa', fontSize: 10, fontFamily: 'monospace' }}
+                dy={10}
+                interval={Math.floor(daysInMonth / 10)}
+              />
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fill: isDark ? '#71717a' : '#a1a1aa', fontSize: 10, fontFamily: 'monospace' }}
+                tickFormatter={(val) => val >= 1000000 ? `${(val / 1000000).toFixed(1)}M` : val >= 1000 ? `${(val / 1000).toFixed(0)}K` : val}
+                width={50}
+              />
+              <Tooltip content={<CCTooltip />} cursor={{ fill: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)' }} />
+              <Bar
+                dataKey="charges"
+                fill="#EF4444"
+                radius={[3, 3, 0, 0]}
+                isAnimationActive={!reduceMotion}
+                animationDuration={1000}
+              />
+              <Bar
+                dataKey="payments"
+                fill="#22C55E"
+                radius={[3, 3, 0, 0]}
+                isAnimationActive={!reduceMotion}
+                animationDuration={1000}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </Card>
     </div>
   );
 };

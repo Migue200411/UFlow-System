@@ -702,7 +702,6 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             {/* Create with AI Button */}
             <Button
                variant="primary"
-               size="sm"
                className="hidden md:flex bg-gradient-to-r from-violet-600 to-fuchsia-600 border-none shadow-neon"
                onClick={() => setAiCreateOpen(true)}
             >
@@ -717,11 +716,11 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
               {theme === 'dark' ? <Moon className="w-4 h-4" /> : <Sun className="w-4 h-4" />}
             </Button>
             <div className="h-6 w-px bg-zinc-200 dark:bg-white/10 mx-1" />
-            <Button variant="secondary" size="sm" onClick={() => setTransferOpen(true)} className="rounded-xl">
+            <Button variant="secondary" onClick={() => setTransferOpen(true)} className="rounded-xl">
               <ArrowRightLeft className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">{t('act.transfer')}</span>
             </Button>
-            <Button size="sm" onClick={() => setQuickInputOpen(true)} className="rounded-xl shadow-neon hover:shadow-neon-sm transition-shadow">
+            <Button onClick={() => setQuickInputOpen(true)} className="rounded-xl shadow-neon hover:shadow-neon-sm transition-shadow">
               <Plus className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">New Entry</span>
             </Button>
