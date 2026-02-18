@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import {
   AppContextType, AppState, Theme, Language, Currency, ViewState,
-  Transaction, Account, Debt, CreditCard, Goal, UserProfile
+  Transaction, Account, Debt, CreditCard, Goal, PlanItem, UserProfile
 } from '../types';
-import { DEMO_ACCOUNTS, DEMO_BUDGETS, DEMO_CREDIT_CARDS, DEMO_DEBTS, DEMO_GOALS, DEMO_TRANSACTIONS, TRANSLATIONS } from '../constants';
+import { DEMO_ACCOUNTS, DEMO_PLAN_ITEMS, DEMO_CREDIT_CARDS, DEMO_DEBTS, DEMO_GOALS, DEMO_TRANSACTIONS, TRANSLATIONS } from '../constants';
 import { generateId, getTodayStr, dateToISO } from '../utils';
 import { auth, db, googleProvider } from '../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, signOut, onAuthStateChanged, updateProfile, User } from 'firebase/auth';
@@ -27,7 +27,7 @@ const INITIAL_STATE: AppState = {
   debts: DEMO_DEBTS,
   creditCards: DEMO_CREDIT_CARDS,
   goals: DEMO_GOALS,
-  budgets: DEMO_BUDGETS,
+  planItems: DEMO_PLAN_ITEMS,
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -54,7 +54,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           debts: state.debts,
           creditCards: state.creditCards,
           goals: state.goals,
-          budgets: state.budgets
+          planItems: state.planItems
         }))
       };
     }
@@ -70,7 +70,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         debts: state.debts,
         creditCards: state.creditCards,
         goals: state.goals,
-        budgets: state.budgets
+        planItems: state.planItems
       }));
 
       const dataString = JSON.stringify(dataToSave);
@@ -92,7 +92,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [
     state.accounts, state.transactions, state.debts, state.creditCards, state.goals,
-    state.budgets, state.isLoading, state.user?.uid, isLoadingUserData
+    state.planItems, state.isLoading, state.user?.uid, isLoadingUserData
   ]);
 
   // Save on page close/reload to prevent data loss
@@ -156,8 +156,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           transactions: txs,
           debts: data.debts || [],
           creditCards: cards,
-          goals: data.goals || [],
-          budgets: data.budgets || [],
+          goals: (data.goals || []).map((g: any) => ({ ...g, contributions: g.contributions || [] })),
+          planItems: (data.planItems || data.budgets || []).map((p: any) => ({ ...p, real: p.real ?? 0 })),
         }));
       } else {
         // New user - start with empty data
@@ -167,7 +167,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           debts: [],
           creditCards: [],
           goals: [],
-          budgets: []
+          planItems: []
         };
         setState(prev => ({
           ...prev,
@@ -257,7 +257,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           debts: [],
           creditCards: [],
           goals: [],
-          budgets: []
+          planItems: []
         }));
 
         if (!isAuthCheckComplete.current) {
@@ -290,7 +290,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           debts: DEMO_DEBTS,
           creditCards: DEMO_CREDIT_CARDS,
           goals: DEMO_GOALS,
-          budgets: DEMO_BUDGETS
+          planItems: DEMO_PLAN_ITEMS
         }));
         setCurrentViewState('dashboard');
         isAuthCheckComplete.current = true;
@@ -468,18 +468,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [addToast]);
 
   const addGoal = useCallback((goal: Omit<Goal, 'id'>) => {
-    const newGoal: Goal = { ...goal, id: generateId() };
+    const newGoal: Goal = { ...goal, id: generateId(), contributions: goal.contributions || [] };
     setState(prev => ({ ...prev, goals: [...prev.goals, newGoal] }));
     addToast('Target Set', 'success');
   }, [addToast]);
 
-  const updateGoal = useCallback((id: string, amount: number) => {
+  const contributeToGoal = useCallback((goalId: string, amount: number, accountId: string) => {
+    setState(prev => {
+      const goal = prev.goals.find(g => g.id === goalId);
+      if (!goal || goal.status === 'completed') return prev;
+
+      const contribution = { id: generateId(), amount, accountId, date: dateToISO(getTodayStr()) };
+      const newAmount = goal.currentAmount + amount;
+      const isComplete = newAmount >= goal.targetAmount;
+
+      // Create expense transaction from the account
+      const tx: Transaction = {
+        id: generateId(),
+        type: 'expense',
+        amount,
+        currency: goal.currency,
+        accountId,
+        category: 'Goal Savings',
+        note: goal.name,
+        date: dateToISO(getTodayStr()),
+        createdAt: Date.now(),
+      };
+
+      return {
+        ...prev,
+        goals: prev.goals.map(g => g.id === goalId ? {
+          ...g,
+          currentAmount: newAmount,
+          contributions: [...g.contributions, contribution],
+          status: isComplete ? 'completed' as const : g.status,
+        } : g),
+        transactions: [tx, ...prev.transactions],
+      };
+    });
+    addToast('Contribution Saved', 'success');
+  }, [addToast]);
+
+  const deleteGoal = useCallback((id: string) => {
+    setState(prev => {
+      const goal = prev.goals.find(g => g.id === id);
+      if (!goal) return prev;
+      // Remove the "Goal Savings" expense transactions created by contributions
+      const contributionTxIds = new Set(
+        goal.contributions.map(c => c.id)
+      );
+      // Match by category + note since contribution tx doesn't store its own id reference
+      const filteredTx = prev.transactions.filter(tx =>
+        !(tx.category === 'Goal Savings' && tx.note === goal.name)
+      );
+      return {
+        ...prev,
+        goals: prev.goals.filter(g => g.id !== id),
+        transactions: filteredTx,
+      };
+    });
+    addToast('Goal Deleted', 'info');
+  }, [addToast]);
+
+  // --- Plan Item Actions ---
+  const addPlanItem = useCallback((item: Omit<PlanItem, 'id'>) => {
+    const newItem: PlanItem = { ...item, id: generateId() };
+    setState(prev => ({ ...prev, planItems: [...prev.planItems, newItem] }));
+  }, []);
+
+  const updatePlanItem = useCallback((id: string, data: Partial<PlanItem>) => {
     setState(prev => ({
       ...prev,
-      goals: prev.goals.map(g => g.id === id ? { ...g, currentAmount: g.currentAmount + amount } : g)
+      planItems: prev.planItems.map(p => p.id === id ? { ...p, ...data } : p)
     }));
-    addToast('Target Updated', 'success');
-  }, [addToast]);
+  }, []);
+
+  const deletePlanItem = useCallback((id: string) => {
+    setState(prev => ({ ...prev, planItems: prev.planItems.filter(p => p.id !== id) }));
+  }, []);
 
   const payDebt = useCallback((id: string, amount: number) => {
     setState(prev => ({
@@ -559,7 +625,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const resetData = useCallback(async () => {
     // Reset data in Firebase to empty
     if (state.user?.uid) {
-      const emptyData = { accounts: [], transactions: [], debts: [], creditCards: [], goals: [], budgets: [] };
+      const emptyData = { accounts: [], transactions: [], debts: [], creditCards: [], goals: [], planItems: [] };
       const dataRef = doc(db, 'users', state.user.uid, 'appData', 'main');
       await setDoc(dataRef, emptyData);
       setState(prev => ({ ...prev, ...emptyData }));
@@ -588,7 +654,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addTransaction, updateTransaction, deleteTransaction, editingTransaction, setEditingTransaction,
     addAccount, deleteAccount, updateAccount, addDebt, deleteDebt,
     addCreditCard, updateCreditCard, deleteCreditCard, chargeCreditCard, payCreditCard, recalcCCBalances,
-    addGoal, updateGoal, payDebt, resetData, t,
+    addGoal, contributeToGoal, deleteGoal, addPlanItem, updatePlanItem, deletePlanItem, payDebt, resetData, t,
     addToast, removeToast, toasts
   };
 

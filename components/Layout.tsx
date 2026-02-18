@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { 
   LayoutDashboard, History, PieChart, Wallet, ShieldAlert, Target, Settings,
-  Menu, Plus, Eye, EyeOff, Moon, Sun, Sparkles, Loader2, Trash2, Pencil, ArrowRightLeft
+  Menu, Plus, Eye, EyeOff, Moon, Sun, Sparkles, Loader2, Trash2, Pencil, ArrowRightLeft, CalendarRange
 } from 'lucide-react';
 import { cn, processAICommand, getTodayStr, dateToISO } from '../utils';
 import { Button, Modal, Input, Select, ToastContainer, Card, DatePicker } from './UIComponents';
@@ -639,6 +639,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     { id: 'dashboard', icon: LayoutDashboard, label: t('nav.dashboard') },
     { id: 'history', icon: History, label: t('nav.history') },
     { id: 'analytics', icon: PieChart, label: t('nav.analytics') },
+    { id: 'planner', icon: CalendarRange, label: t('nav.planner') },
     { id: 'accounts', icon: Wallet, label: t('nav.accounts') },
     { id: 'debts', icon: ShieldAlert, label: t('nav.debts') },
     { id: 'goals', icon: Target, label: t('nav.goals') },

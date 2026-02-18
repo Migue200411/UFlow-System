@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import { Card, Button, Input, Select, Badge, Money, Toggle, SegmentedControl, Modal, DatePicker } from '../components/UIComponents';
 import { convertToBase, cn, processAICommand, generateId, getTodayStr, dateToISO } from '../utils';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid, BarChart, Bar } from 'recharts';
-import { Moon, Sun, Monitor, Globe, Shield, CreditCard as CreditCardIcon, LogOut, User, Activity, TrendingUp, BarChart3, PieChart as PieIcon, Send, Sparkles, Bot, Wallet, Settings, Trash2, Plus, Pencil } from 'lucide-react';
+import { Moon, Sun, Monitor, Globe, Shield, CreditCard as CreditCardIcon, LogOut, User, Activity, TrendingUp, PieChart as PieIcon, Send, Sparkles, Bot, Wallet, Settings, Trash2, Plus, Pencil, ChevronDown, Check, Target } from 'lucide-react';
 import { AIMessage, CreditCard as CreditCardType } from '../types';
 
 // --- HISTORY VIEW ---
@@ -642,11 +642,11 @@ export const AnalyticsView = () => {
       </div>
 
       {/* Credit Card / Debt Chart */}
-      <Card className="relative overflow-hidden group border-brand-500/10 hover:border-brand-500/20">
-        <div className="absolute top-0 right-0 p-8 opacity-5 dark:opacity-10 pointer-events-none">
+      <Card className="relative group border-brand-500/10 hover:border-brand-500/20">
+        <div className="absolute top-0 right-0 p-8 opacity-5 dark:opacity-10 pointer-events-none overflow-hidden">
           <CreditCardIcon className="w-40 h-40 text-brand-500" />
         </div>
-        <div className="mb-4 relative z-10 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+        <div className="mb-4 relative z-30 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
           <div>
             <h3 className="font-bold text-xl text-zinc-900 dark:text-white tracking-tight flex items-center gap-2">
               <CreditCardIcon className="w-5 h-5 text-brand-500" />
@@ -662,7 +662,7 @@ export const AnalyticsView = () => {
             value={ccFilter}
             onChange={setCcFilter}
             options={ccFilterOptions}
-            className="!w-auto min-w-[160px]"
+            className="!w-auto min-w-[160px] relative z-30"
           />
         </div>
 
@@ -738,6 +738,268 @@ export const AnalyticsView = () => {
             </BarChart>
           </ResponsiveContainer>
         </div>
+      </Card>
+    </div>
+  );
+};
+
+// --- PLANNER VIEW ---
+export const PlannerView = () => {
+  const { planItems, addPlanItem, updatePlanItem, deletePlanItem, currencyBase, timezone, language } = useApp();
+  const tz = timezone === 'auto' ? Intl.DateTimeFormat().resolvedOptions().timeZone : timezone;
+
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const parts = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric', month: 'numeric' }).formatToParts(new Date());
+    return { month: parseInt(parts.find(p => p.type === 'month')!.value) - 1, year: parseInt(parts.find(p => p.type === 'year')!.value) };
+  });
+  const [editingCell, setEditingCell] = useState<{ id: string; field: string } | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [addingRow, setAddingRow] = useState(false);
+  const [newRow, setNewRow] = useState({ type: 'expense' as 'income' | 'expense' | 'savings', concept: '', planned: '' });
+
+  const monthKey = `${selectedMonth.year}-${String(selectedMonth.month + 1).padStart(2, '0')}`;
+
+  const monthNames = language === 'es'
+    ? ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre']
+    : ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  const monthOptions = monthNames.map((name, i) => ({ value: String(i), label: name }));
+  const nowParts = new Intl.DateTimeFormat('en-US', { timeZone: tz, year: 'numeric' }).formatToParts(new Date());
+  const nowYear = parseInt(nowParts.find(p => p.type === 'year')!.value);
+  const yearOptions = Array.from({ length: 3 }, (_, i) => ({ value: String(nowYear - 1 + i), label: String(nowYear - 1 + i) }));
+
+  const monthItems = useMemo(() => planItems.filter(p => p.month === monthKey), [planItems, monthKey]);
+
+  // Totals
+  const totals = useMemo(() => {
+    let planned = 0, real = 0;
+    monthItems.forEach(item => {
+      const p = convertToBase(item.planned, item.currency, currencyBase);
+      const r = convertToBase(item.real || 0, item.currency, currencyBase);
+      if (item.type === 'income') { planned += p; real += r; }
+      else { planned -= p; real -= r; }
+    });
+    return { planned, real, diff: real - planned };
+  }, [monthItems, currencyBase]);
+
+  const startEdit = (id: string, field: string, value: string) => {
+    setEditingCell({ id, field });
+    setEditValue(value);
+  };
+
+  const commitEdit = () => {
+    if (!editingCell) return;
+    const { id, field } = editingCell;
+    if (field === 'planned' || field === 'real') {
+      const num = parseFloat(editValue);
+      if (!isNaN(num) && num >= 0) updatePlanItem(id, { [field]: num });
+    } else {
+      updatePlanItem(id, { [field]: editValue });
+    }
+    setEditingCell(null);
+  };
+
+  const handleAddRow = () => {
+    if (!newRow.concept || !newRow.planned) return;
+    addPlanItem({
+      type: newRow.type,
+      concept: newRow.concept,
+      planned: parseFloat(newRow.planned),
+      real: 0,
+      month: monthKey,
+      currency: currencyBase,
+    });
+    setNewRow({ type: 'expense', concept: '', planned: '' });
+    setAddingRow(false);
+  };
+
+  const typeLabel = (t: string) => {
+    if (t === 'income') return language === 'es' ? 'Ingreso' : 'Income';
+    if (t === 'savings') return language === 'es' ? 'Ahorro' : 'Savings';
+    return language === 'es' ? 'Gasto' : 'Expense';
+  };
+  const typeColor = (t: string) => {
+    if (t === 'income') return 'bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-400';
+    if (t === 'savings') return 'bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400';
+    return 'bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400';
+  };
+
+  const EditableCell = ({ id, field, value, isMoney }: { id: string; field: string; value: string; isMoney?: boolean }) => {
+    const isEditing = editingCell?.id === id && editingCell?.field === field;
+    if (isEditing) {
+      return (
+        <input
+          type={isMoney ? 'number' : 'text'}
+          value={editValue}
+          onChange={e => setEditValue(e.target.value)}
+          onBlur={commitEdit}
+          onKeyDown={e => { if (e.key === 'Enter') commitEdit(); if (e.key === 'Escape') setEditingCell(null); }}
+          className="w-full h-7 text-xs font-mono px-2 rounded-md bg-brand-500/10 border border-brand-500/50 outline-none text-zinc-900 dark:text-white"
+          autoFocus
+        />
+      );
+    }
+    return (
+      <button
+        onClick={() => startEdit(id, field, value)}
+        className={cn("w-full text-xs truncate px-1 py-0.5 rounded hover:bg-zinc-100 dark:hover:bg-white/5 transition-colors cursor-text", isMoney ? "text-right" : "text-left")}
+      >
+        {isMoney ? <span className="font-mono"><Money amount={parseFloat(value) || 0} currency={currencyBase} /></span> : (value || <span className="text-zinc-300 dark:text-zinc-600">—</span>)}
+      </button>
+    );
+  };
+
+  const cols = "grid-cols-[90px_1fr_1fr_1fr_1fr_50px_36px]";
+  const div = "border-r border-zinc-100 dark:border-white/[0.06]";
+
+  return (
+    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
+      <div className="flex items-center justify-between">
+        <h2 className="text-2xl font-bold text-zinc-900 dark:text-white">
+          {language === 'es' ? 'Planificación Mensual' : 'Monthly Planner'}
+        </h2>
+        <div className="flex items-center gap-2">
+          <Select value={String(selectedMonth.month)} onChange={val => setSelectedMonth(prev => ({ ...prev, month: parseInt(val) }))} options={monthOptions} className="!w-auto min-w-[130px]" />
+          <Select value={String(selectedMonth.year)} onChange={val => setSelectedMonth(prev => ({ ...prev, year: parseInt(val) }))} options={yearOptions} className="!w-auto min-w-[100px]" />
+        </div>
+      </div>
+
+      <Card className="!p-0 overflow-hidden">
+        {/* Header */}
+        <div className={cn("grid gap-0 border-b border-zinc-200 dark:border-white/10 bg-zinc-50 dark:bg-white/5 text-[10px] font-bold uppercase tracking-widest text-zinc-400", cols)}>
+          <div className={cn("px-3 py-2.5", div)}>{language === 'es' ? 'Tipo' : 'Type'}</div>
+          <div className={cn("px-3 py-2.5", div)}>{language === 'es' ? 'Concepto' : 'Concept'}</div>
+          <div className={cn("px-3 py-2.5 text-right", div)}>{language === 'es' ? 'Planificado' : 'Planned'}</div>
+          <div className={cn("px-3 py-2.5 text-right", div)}>Real</div>
+          <div className={cn("px-3 py-2.5 text-right", div)}>{language === 'es' ? 'Diferencia' : 'Diff'}</div>
+          <div className={cn("px-3 py-2.5 text-center", div)}></div>
+          <div className="px-1 py-2.5"></div>
+        </div>
+
+        {/* Rows */}
+        {monthItems.map((item, idx) => {
+          const planned = convertToBase(item.planned, item.currency, currencyBase);
+          const real = convertToBase(item.real || 0, item.currency, currencyBase);
+          const diff = item.type === 'income' ? real - planned : planned - real;
+          const pct = planned > 0 ? (real / planned) * 100 : 0;
+          const isOver = item.type === 'expense' && real > planned;
+          const statusColor = item.type === 'income'
+            ? (pct >= 100 ? 'bg-green-500' : pct > 60 ? 'bg-amber-500' : 'bg-zinc-300 dark:bg-zinc-600')
+            : (isOver ? 'bg-red-500' : pct > 80 ? 'bg-amber-500' : 'bg-green-500');
+
+          return (
+            <div key={item.id} className={cn(
+              "grid gap-0 items-center border-b border-zinc-100 dark:border-white/5 group hover:bg-zinc-50/50 dark:hover:bg-white/[0.02] transition-colors",
+              cols,
+              idx % 2 === 1 && "bg-zinc-50/30 dark:bg-white/[0.01]"
+            )}>
+              <div className={cn("px-2 py-2 flex items-center justify-center", div)}>
+                <span className={cn("text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide", typeColor(item.type))}>
+                  {typeLabel(item.type)}
+                </span>
+              </div>
+              <div className={cn("px-2 py-1", div)}><EditableCell id={item.id} field="concept" value={item.concept} /></div>
+              <div className={cn("px-2 py-1", div)}><EditableCell id={item.id} field="planned" value={String(item.planned)} isMoney /></div>
+              <div className={cn("px-2 py-1", div)}><EditableCell id={item.id} field="real" value={String(item.real || 0)} isMoney /></div>
+              <div className={cn("px-2 py-1 text-right", div)}>
+                <span className={cn("text-xs font-mono font-bold", diff >= 0 ? "text-green-500" : "text-red-500")}>
+                  {diff >= 0 ? '+' : ''}<Money amount={diff} currency={currencyBase} />
+                </span>
+              </div>
+              <div className={cn("px-2 py-1 flex items-center justify-center", div)}>
+                <div className="w-8 h-1.5 bg-zinc-200 dark:bg-zinc-700 rounded-full overflow-hidden">
+                  <div className={cn("h-full rounded-full transition-all duration-500", statusColor)} style={{ width: `${Math.min(pct, 100)}%` }} />
+                </div>
+              </div>
+              <div className="px-1 py-1 flex justify-center">
+                <button onClick={() => deletePlanItem(item.id)} className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-red-500 transition-all p-0.5">
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+          );
+        })}
+
+        {/* Add row */}
+        {addingRow ? (
+          <div className={cn("grid gap-0 items-center border-b border-zinc-100 dark:border-white/5 bg-brand-500/5", cols)}>
+            <div className={cn("px-1.5 py-1.5 flex items-center justify-center", div)}>
+              <div className="flex flex-col gap-0.5 w-full px-0.5">
+                {(['expense', 'income', 'savings'] as const).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => setNewRow({ ...newRow, type: t })}
+                    className={cn(
+                      "text-[9px] font-bold uppercase px-1.5 py-1 rounded-md transition-colors text-center",
+                      newRow.type === t
+                        ? t === 'income' ? 'bg-green-500 text-white' : t === 'savings' ? 'bg-blue-500 text-white' : 'bg-red-500 text-white'
+                        : 'text-zinc-400 hover:bg-zinc-100 dark:hover:bg-white/10'
+                    )}
+                  >
+                    {typeLabel(t)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className={cn("px-2 py-1", div)}>
+              <input
+                value={newRow.concept}
+                onChange={e => setNewRow({ ...newRow, concept: e.target.value })}
+                onKeyDown={e => { if (e.key === 'Enter') handleAddRow(); if (e.key === 'Escape') setAddingRow(false); }}
+                placeholder={language === 'es' ? 'Concepto...' : 'Concept...'}
+                className="w-full h-7 text-xs px-2 rounded-md bg-white dark:bg-white/10 border border-zinc-200 dark:border-white/10 outline-none"
+                autoFocus
+              />
+            </div>
+            <div className={cn("px-2 py-1", div)}>
+              <input
+                type="number"
+                value={newRow.planned}
+                onChange={e => setNewRow({ ...newRow, planned: e.target.value })}
+                onKeyDown={e => { if (e.key === 'Enter') handleAddRow(); }}
+                placeholder="0"
+                className="w-full h-7 text-xs font-mono px-2 rounded-md bg-white dark:bg-white/10 border border-zinc-200 dark:border-white/10 outline-none text-right"
+              />
+            </div>
+            <div className={cn("px-2 py-1 text-right text-xs text-zinc-300", div)}>—</div>
+            <div className={cn("px-2 py-1 text-right text-xs text-zinc-300", div)}>—</div>
+            <div className={cn("px-2 py-1 text-center text-xs text-zinc-300", div)}>—</div>
+            <div className="px-1 py-1 flex justify-center">
+              <button onClick={handleAddRow} className="text-brand-500 hover:text-brand-400 p-0.5">
+                <Check className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Summary */}
+        {monthItems.length > 0 && (
+          <div className={cn("grid gap-0 items-center bg-zinc-50 dark:bg-white/5 border-t border-zinc-200 dark:border-white/10", cols)}>
+            <div className={cn("px-3 py-2.5 col-span-2", div)}>
+              <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{language === 'es' ? 'Balance neto' : 'Net balance'}</span>
+            </div>
+            <div className={cn("px-2 py-2.5 text-right", div)}>
+              <span className="text-xs font-mono font-bold text-zinc-600 dark:text-zinc-300"><Money amount={Math.abs(totals.planned)} currency={currencyBase} /></span>
+            </div>
+            <div className={cn("px-2 py-2.5 text-right", div)}>
+              <span className="text-xs font-mono font-bold text-zinc-600 dark:text-zinc-300"><Money amount={Math.abs(totals.real)} currency={currencyBase} /></span>
+            </div>
+            <div className={cn("px-2 py-2.5 text-right", div)}>
+              <span className={cn("text-xs font-mono font-bold", totals.diff >= 0 ? "text-green-500" : "text-red-500")}>
+                {totals.diff >= 0 ? '+' : ''}<Money amount={totals.diff} currency={currencyBase} />
+              </span>
+            </div>
+            <div className="col-span-2"></div>
+          </div>
+        )}
+
+        {/* Add row button */}
+        <button
+          onClick={() => setAddingRow(true)}
+          className="w-full py-2.5 text-xs font-medium text-zinc-400 hover:text-brand-500 hover:bg-brand-500/5 transition-colors flex items-center justify-center gap-1.5"
+        >
+          <Plus className="w-3.5 h-3.5" /> {language === 'es' ? 'Agregar fila' : 'Add row'}
+        </button>
       </Card>
     </div>
   );
@@ -1040,9 +1302,13 @@ export const AccountsView = () => {
 
 // --- GOALS VIEW ---
 export const GoalsView = () => {
-  const { goals, addGoal, updateGoal, t, currencyBase } = useApp();
+  const { goals, accounts, addGoal, contributeToGoal, deleteGoal, t, language, timezone } = useApp();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newGoal, setNewGoal] = useState({ name: '', targetAmount: '', currency: 'COP' });
+  const [newGoal, setNewGoal] = useState({ name: '', targetAmount: '', currency: 'COP', deadline: '' });
+  const [expandedGoal, setExpandedGoal] = useState<string | null>(null);
+  // Per-goal contribution state
+  const [contribAmounts, setContribAmounts] = useState<Record<string, string>>({});
+  const [contribAccounts, setContribAccounts] = useState<Record<string, string>>({});
 
   const handleSave = () => {
     if (!newGoal.name || !newGoal.targetAmount) return;
@@ -1051,65 +1317,183 @@ export const GoalsView = () => {
       targetAmount: parseFloat(newGoal.targetAmount),
       currentAmount: 0,
       currency: newGoal.currency as any,
-      status: 'active'
+      status: 'active',
+      contributions: [],
+      ...(newGoal.deadline ? { deadline: newGoal.deadline } : {}),
     });
     setIsModalOpen(false);
-    setNewGoal({ name: '', targetAmount: '', currency: 'COP' });
+    setNewGoal({ name: '', targetAmount: '', currency: 'COP', deadline: '' });
+  };
+
+  const handleContribute = (goalId: string) => {
+    const amount = parseFloat(contribAmounts[goalId] || '');
+    const accountId = contribAccounts[goalId];
+    if (!amount || amount <= 0 || !accountId) return;
+    contributeToGoal(goalId, amount, accountId);
+    setContribAmounts(prev => ({ ...prev, [goalId]: '' }));
+  };
+
+  const getDaysRemaining = (deadline: string) => {
+    const tz = timezone === 'auto' ? Intl.DateTimeFormat().resolvedOptions().timeZone : timezone;
+    const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: tz });
+    const today = new Date(todayStr);
+    const target = new Date(deadline.split('T')[0]);
+    const diff = Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    return diff;
   };
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">{t('nav.goals')}</h2>
-        <Button onClick={() => setIsModalOpen(true)}><Sparkles className="w-4 h-4" /> New Goal</Button>
+        <Button onClick={() => setIsModalOpen(true)}><Plus className="w-4 h-4" /> {language === 'es' ? 'Nueva Meta' : 'New Goal'}</Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {goals.map(goal => {
           const progress = Math.min((goal.currentAmount / goal.targetAmount) * 100, 100);
+          const isComplete = goal.status === 'completed';
+          const isExpanded = expandedGoal === goal.id;
+          const contributions = goal.contributions || [];
+
           return (
-            <Card key={goal.id}>
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="font-bold text-lg text-zinc-900 dark:text-white">{goal.name}</h3>
-                  <p className="text-xs text-zinc-500 font-mono mt-1">Target: <Money amount={goal.targetAmount} currency={goal.currency} /></p>
+            <Card key={goal.id} className={cn(isComplete && 'border-green-500/30 bg-green-500/5')}>
+              {/* Header */}
+              <div className="flex justify-between items-start mb-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-lg text-zinc-900 dark:text-white truncate">{goal.name}</h3>
+                    {isComplete && (
+                      <Badge variant="brand" className="!bg-green-500/20 !text-green-600 dark:!text-green-400 shrink-0">
+                        <Check className="w-3 h-3 mr-1" /> {language === 'es' ? 'Cumplida' : 'Complete'}
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 mt-1">
+                    <p className="text-xs text-zinc-500 font-mono">
+                      {language === 'es' ? 'Meta' : 'Target'}: <Money amount={goal.targetAmount} currency={goal.currency} />
+                    </p>
+                    {goal.deadline && !isComplete && (() => {
+                      const days = getDaysRemaining(goal.deadline);
+                      return (
+                        <span className={cn(
+                          "text-[10px] font-bold px-1.5 py-0.5 rounded",
+                          days < 0 ? "bg-red-100 dark:bg-red-500/20 text-red-600 dark:text-red-400" :
+                          days <= 30 ? "bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400" :
+                          "bg-zinc-100 dark:bg-white/10 text-zinc-500"
+                        )}>
+                          {days < 0
+                            ? (language === 'es' ? `${Math.abs(days)}d vencida` : `${Math.abs(days)}d overdue`)
+                            : (language === 'es' ? `${days}d restantes` : `${days}d left`)}
+                        </span>
+                      );
+                    })()}
+                  </div>
                 </div>
-                <div className="text-right">
-                  <span className="text-2xl font-black text-brand-500"><Money amount={goal.currentAmount} currency={goal.currency} /></span>
+                <div className="flex items-center gap-1 shrink-0">
+                  <Button variant="ghost" size="icon" onClick={() => deleteGoal(goal.id)} className="h-7 w-7 text-zinc-400 hover:text-red-500">
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
                 </div>
               </div>
 
-              <div className="relative h-4 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden mb-4">
+              {/* Amount + Progress */}
+              <div className="flex items-end justify-between mb-2">
+                <span className="text-2xl font-black text-brand-500"><Money amount={goal.currentAmount} currency={goal.currency} /></span>
+                <span className="text-xs font-mono font-bold text-zinc-400">{progress.toFixed(0)}%</span>
+              </div>
+              <div className="relative h-3 w-full bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden mb-4">
                 <div
-                  className="absolute h-full bg-brand-500 rounded-full transition-all duration-1000"
+                  className={cn("absolute h-full rounded-full transition-all duration-1000", isComplete ? "bg-green-500" : "bg-brand-500")}
                   style={{ width: `${progress}%` }}
                 >
                   <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]" style={{ backgroundImage: 'linear-gradient(90deg,transparent,rgba(255,255,255,0.5),transparent)', transform: 'skewX(-20deg)' }} />
                 </div>
               </div>
 
-              <div className="flex gap-2">
-                <Button size="sm" variant="secondary" className="flex-1" onClick={() => updateGoal(goal.id, goal.targetAmount * 0.1)}>+ 10%</Button>
-                <Button size="sm" variant="secondary" className="flex-1" onClick={() => updateGoal(goal.id, 10000)}>+ 10k</Button>
-              </div>
+              {/* Contribution input (only if not complete) */}
+              {!isComplete && (
+                <div className="space-y-2">
+                  <Select
+                    label={language === 'es' ? 'Cuenta' : 'Account'}
+                    value={contribAccounts[goal.id] || ''}
+                    onChange={v => setContribAccounts(prev => ({ ...prev, [goal.id]: v }))}
+                    options={accounts.map(a => ({ value: a.id, label: a.name }))}
+                  />
+                  <div className="flex gap-2 items-end">
+                    <Input
+                      label={language === 'es' ? 'Monto' : 'Amount'}
+                      type="number"
+                      value={contribAmounts[goal.id] || ''}
+                      onChange={e => setContribAmounts(prev => ({ ...prev, [goal.id]: e.target.value }))}
+                      placeholder="0"
+                      className="flex-1"
+                    />
+                    <Button onClick={() => handleContribute(goal.id)} className="h-9 px-4 shrink-0">
+                      <Plus className="w-4 h-4 mr-1" /> {language === 'es' ? 'Abonar' : 'Add'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {/* Contributions history toggle */}
+              {contributions.length > 0 && (
+                <div className="mt-3 border-t border-zinc-200 dark:border-white/10 pt-3">
+                  <button
+                    onClick={() => setExpandedGoal(isExpanded ? null : goal.id)}
+                    className="flex items-center gap-1 text-xs font-bold text-zinc-500 hover:text-brand-500 transition-colors w-full"
+                  >
+                    <ChevronDown className={cn("w-3.5 h-3.5 transition-transform", isExpanded && "rotate-180")} />
+                    {language === 'es' ? `${contributions.length} abonos` : `${contributions.length} contributions`}
+                  </button>
+                  {isExpanded && (
+                    <div className="mt-2 space-y-1.5 max-h-40 overflow-y-auto custom-scrollbar">
+                      {[...contributions].reverse().map(c => {
+                        const acc = accounts.find(a => a.id === c.accountId);
+                        return (
+                          <div key={c.id} className="flex items-center justify-between text-xs py-1 px-2 rounded-lg bg-zinc-50 dark:bg-white/5">
+                            <span className="text-zinc-500 font-mono">{c.date.split('T')[0]}</span>
+                            <span className="text-zinc-400">{acc?.name || '—'}</span>
+                            <span className="font-bold font-mono text-brand-500">+<Money amount={c.amount} currency={goal.currency} /></span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </Card>
           )
         })}
       </div>
 
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Set New Goal">
+      {goals.length === 0 && (
+        <Card className="text-center py-12">
+          <Target className="w-12 h-12 text-zinc-300 dark:text-zinc-600 mx-auto mb-3" />
+          <p className="text-zinc-500 dark:text-zinc-400 text-sm">
+            {language === 'es' ? 'No tienes metas aún. ¡Crea una para empezar a ahorrar!' : 'No goals yet. Create one to start saving!'}
+          </p>
+        </Card>
+      )}
+
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={language === 'es' ? 'Nueva Meta' : 'New Goal'}>
         <div className="space-y-4">
-          <Input label="Goal Name" value={newGoal.name} onChange={e => setNewGoal({ ...newGoal, name: e.target.value })} placeholder="e.g. New Car" />
+          <Input label={language === 'es' ? 'Nombre' : 'Goal Name'} value={newGoal.name} onChange={e => setNewGoal({ ...newGoal, name: e.target.value })} placeholder={language === 'es' ? 'ej. Carro nuevo' : 'e.g. New Car'} />
           <div className="grid grid-cols-2 gap-4">
-            <Input label="Target Amount" type="number" value={newGoal.targetAmount} onChange={e => setNewGoal({ ...newGoal, targetAmount: e.target.value })} />
+            <Input label={language === 'es' ? 'Monto objetivo' : 'Target Amount'} type="number" value={newGoal.targetAmount} onChange={e => setNewGoal({ ...newGoal, targetAmount: e.target.value })} />
             <Select
-              label="Currency"
+              label={language === 'es' ? 'Moneda' : 'Currency'}
               value={newGoal.currency}
               onChange={v => setNewGoal({ ...newGoal, currency: v })}
               options={[{ value: 'COP', label: 'COP' }, { value: 'USD', label: 'USD' }, { value: 'EUR', label: 'EUR' }]}
             />
           </div>
-          <Button className="w-full mt-4" onClick={handleSave}>Create Goal</Button>
+          <DatePicker
+            label={language === 'es' ? 'Fecha límite (opcional)' : 'Deadline (optional)'}
+            value={newGoal.deadline}
+            onChange={v => setNewGoal({ ...newGoal, deadline: v })}
+          />
+          <Button className="w-full mt-4" onClick={handleSave}>{language === 'es' ? 'Crear Meta' : 'Create Goal'}</Button>
         </div>
       </Modal>
     </div>

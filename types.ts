@@ -6,7 +6,7 @@ export type TransactionType = 'income' | 'expense' | 'adjustment';
 export type DebtType = 'owes_me' | 'i_owe';
 export type DebtStatus = 'pending' | 'partial' | 'paid';
 export type GoalStatus = 'active' | 'completed' | 'paused';
-export type ViewState = 'dashboard' | 'history' | 'analytics' | 'accounts' | 'debts' | 'goals' | 'settings' | 'ai-assistant';
+export type ViewState = 'dashboard' | 'history' | 'analytics' | 'planner' | 'accounts' | 'debts' | 'goals' | 'settings' | 'ai-assistant';
 
 export interface UserProfile {
   uid: string;
@@ -76,6 +76,13 @@ export interface CreditCard {
   createdAt: string;
 }
 
+export interface GoalContribution {
+  id: string;
+  amount: number;
+  accountId: string;
+  date: string;
+}
+
 export interface Goal {
   id: string;
   name: string;
@@ -84,13 +91,18 @@ export interface Goal {
   currency: Currency;
   status: GoalStatus;
   deadline?: string;
+  contributions: GoalContribution[];
 }
 
-export interface Budget {
+export type PlanItemType = 'income' | 'expense' | 'savings';
+
+export interface PlanItem {
   id: string;
-  category: string;
-  limit: number;
-  spent: number; // Calculated on the fly ideally, but kept simple here
+  type: PlanItemType;
+  concept: string;
+  planned: number;
+  real: number;
+  month: string; // "YYYY-MM"
   currency: Currency;
 }
 
@@ -120,7 +132,7 @@ export interface AppState {
   debts: Debt[];
   creditCards: CreditCard[];
   goals: Goal[];
-  budgets: Budget[];
+  planItems: PlanItem[];
 }
 
 export interface AppContextType extends AppState {
@@ -154,7 +166,11 @@ export interface AppContextType extends AppState {
   payCreditCard: (id: string, amount: number) => void;
   recalcCCBalances: () => void;
   addGoal: (goal: Omit<Goal, 'id'>) => void;
-  updateGoal: (id: string, amount: number) => void;
+  contributeToGoal: (goalId: string, amount: number, accountId: string) => void;
+  deleteGoal: (id: string) => void;
+  addPlanItem: (item: Omit<PlanItem, 'id'>) => void;
+  updatePlanItem: (id: string, data: Partial<PlanItem>) => void;
+  deletePlanItem: (id: string) => void;
   payDebt: (id: string, amount: number) => void;
   resetData: () => void;
   t: (key: string) => string;

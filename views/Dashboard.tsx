@@ -2,13 +2,13 @@ import React, { useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { convertToBase } from '../utils';
 import { Card, Money, Badge, Button } from '../components/UIComponents';
-import { ArrowUpRight, ArrowDownLeft, Wallet, CreditCard, Activity, Box, ArrowRightLeft, Receipt, Download, TrendingUp, Zap } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, Wallet, CreditCard, Activity, Box, ArrowRightLeft, Receipt, Download, Zap, Target } from 'lucide-react';
 
 export const DashboardView: React.FC = () => {
-  const { accounts, transactions, debts, creditCards, goals, currencyBase, timezone, t, reduceMotion, setEditingTransaction } = useApp();
+  const { accounts, transactions, debts, creditCards, goals, currencyBase, timezone, t, language, reduceMotion, setEditingTransaction, setView } = useApp();
 
   // --- Optimized Calculations (Memoized) ---
-  const { assets, liabilities, receivables, available, relative, burnRate } = useMemo(() => {
+  const { assets, liabilities, receivables, available, relative, burnRate, savings, riskScore, ccUtil } = useMemo(() => {
     
     // 1. Calculate TOTAL ASSETS (Sum of all transactions converted to Base)
     // Formula: Sum(convertToBase(tx.amount * sign))
@@ -69,15 +69,34 @@ export const DashboardView: React.FC = () => {
     // Assume budget limit 2M COP for demo or 80% utilization
     const burnRateVal = Math.min((monthlyExpense / 2000000) * 100, 100);
 
+    // Total savings across all goals
+    const totalSavings = goals.reduce((acc, g) => acc + convertToBase(g.currentAmount, g.currency, currencyBase), 0);
+
+    // Credit utilization: total used / total limit across all cards
+    const totalCCLimit = creditCards.reduce((acc, c) => acc + convertToBase(c.creditLimit, c.currency, currencyBase), 0);
+    const totalCCUsed = creditCards.reduce((acc, c) => acc + convertToBase(c.usedAmount, c.currency, currencyBase), 0);
+    const ccUtil = totalCCLimit > 0 ? (totalCCUsed / totalCCLimit) * 100 : 0;
+
+    // Debt-to-asset ratio
+    const debtRatio = totalAssets > 0 ? (totalLiabilities / totalAssets) * 100 : 0;
+
+    // Overall risk score (0-100): weighted avg of CC utilization and debt ratio
+    const riskScore = creditCards.length > 0
+      ? Math.min(ccUtil * 0.6 + debtRatio * 0.4, 100)
+      : Math.min(debtRatio, 100);
+
     return {
         assets: totalAssets,
         liabilities: totalLiabilities,
         receivables: totalReceivables,
-        available: totalAssets - totalLiabilities, // Conservative liquidity
-        relative: totalAssets + totalReceivables,  // Optimistic balance
-        burnRate: burnRateVal
+        available: totalAssets - totalLiabilities,
+        relative: totalAssets + totalReceivables,
+        burnRate: burnRateVal,
+        savings: totalSavings,
+        riskScore,
+        ccUtil,
     };
-  }, [accounts, transactions, debts, creditCards, currencyBase]);
+  }, [accounts, transactions, debts, creditCards, goals, currencyBase]);
 
   const recentTx = useMemo(() => {
       return [...transactions].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 8);
@@ -174,6 +193,20 @@ export const DashboardView: React.FC = () => {
              <div className="absolute inset-0 w-full h-full opacity-20" style={{backgroundImage: 'linear-gradient(45deg,rgba(255,255,255,.15) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.15) 50%,rgba(255,255,255,.15) 75%,transparent 75%,transparent)', backgroundSize: '1rem 1rem'}} />
           </div>
         </Card>
+
+        {savings > 0 && (
+          <Card className={`bg-gradient-to-br from-emerald-500/5 to-transparent border-emerald-500/20 ${!reduceMotion ? 'animate-in fade-in slide-in-from-bottom-8 duration-700 delay-[400ms]' : ''}`}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Target className="w-3.5 h-3.5 text-emerald-500" />
+                <span className="text-[10px] font-bold uppercase text-emerald-600 dark:text-emerald-500 tracking-widest">{t('dash.targets')}</span>
+              </div>
+              <span className="text-sm font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                <Money amount={savings} currency={currencyBase} />
+              </span>
+            </div>
+          </Card>
+        )}
       </div>
 
       {/* Column 2: Data Stream */}
@@ -247,51 +280,82 @@ export const DashboardView: React.FC = () => {
 
       {/* Column 3: Risk & Targets */}
       <div className="lg:col-span-1 space-y-4 min-w-0">
-        <Card variant="alert" className={!reduceMotion ? 'animate-in fade-in slide-in-from-bottom-8 duration-700 delay-700' : ''}>
-          <div className="flex justify-between items-center mb-3">
-             <span className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-widest">{t('dash.risk')}</span>
-             <div className="animate-pulse">
-                <Badge variant="danger">{t('st.critical')}</Badge>
-             </div>
-          </div>
-          <div className="flex items-center gap-3 mb-2">
-             <div className="p-2 bg-gradient-to-br from-red-500/20 to-transparent rounded-xl text-red-600 dark:text-red-400 border border-red-500/20 shadow-[0_0_15px_-5px_rgba(239,68,68,0.4)]">
-               <TrendingUp className="w-5 h-5" />
-             </div>
-             <div>
-               <h4 className="font-bold text-xs text-zinc-900 dark:text-white">Credit Utilization</h4>
-               <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Exceeds 80% threshold</p>
-             </div>
-          </div>
-          <Button size="sm" variant="danger" className="w-full mt-2">View Analysis</Button>
-        </Card>
+        {/* Risk Assessment - Dynamic */}
+        {(() => {
+          const isLow = riskScore < 30;
+          const isMedium = riskScore >= 30 && riskScore < 60;
+          const isHigh = riskScore >= 60;
+          const riskLabel = isLow ? (language === 'es' ? 'Bajo' : 'Low') : isMedium ? (language === 'es' ? 'Medio' : 'Medium') : (language === 'es' ? 'Alto' : 'High');
+          const riskColor = isLow ? 'green' : isMedium ? 'amber' : 'red';
+          const badgeVariant = isLow ? 'success' : isMedium ? 'neutral' : 'danger';
+          return (
+            <Card variant={isHigh ? 'alert' : undefined} className={!reduceMotion ? 'animate-in fade-in slide-in-from-bottom-8 duration-700 delay-700' : ''}>
+              <div className="flex justify-between items-center mb-3">
+                <span className={`text-[10px] font-bold uppercase tracking-widest text-${riskColor}-600 dark:text-${riskColor}-400`}>{t('dash.risk')}</span>
+                <Badge variant={badgeVariant as any}>{riskLabel}</Badge>
+              </div>
+              <div className="space-y-2">
+                {creditCards.length > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-zinc-500">{language === 'es' ? 'Uso de crédito' : 'Credit utilization'}</span>
+                    <span className={`text-xs font-mono font-bold ${ccUtil > 80 ? 'text-red-500' : ccUtil > 50 ? 'text-amber-500' : 'text-green-500'}`}>{ccUtil.toFixed(0)}%</span>
+                  </div>
+                )}
+                {liabilities > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-zinc-500">{language === 'es' ? 'Pasivos' : 'Liabilities'}</span>
+                    <span className="text-xs font-mono font-bold text-zinc-600 dark:text-zinc-300"><Money amount={liabilities} currency={currencyBase} /></span>
+                  </div>
+                )}
+                {creditCards.length > 0 && (
+                  <div className={`relative h-2 w-full bg-zinc-200 dark:bg-zinc-800 rounded-full overflow-hidden mt-1`}>
+                    <div className={`absolute h-full rounded-full transition-all duration-1000 ${ccUtil > 80 ? 'bg-red-500' : ccUtil > 50 ? 'bg-amber-500' : 'bg-green-500'}`} style={{ width: `${Math.min(ccUtil, 100)}%` }} />
+                  </div>
+                )}
+                {riskScore === 0 && (
+                  <p className="text-[10px] text-zinc-400 text-center py-1">{language === 'es' ? 'Sin riesgo detectado' : 'No risk detected'}</p>
+                )}
+              </div>
+            </Card>
+          );
+        })()}
 
+        {/* Targets */}
         <Card className={!reduceMotion ? 'animate-in fade-in slide-in-from-bottom-8 duration-700 delay-1000' : ''}>
           <div className="flex items-center justify-between mb-4">
              <h3 className="font-bold text-xs uppercase tracking-widest text-zinc-500 dark:text-zinc-400">{t('dash.targets')}</h3>
-             <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full bg-zinc-100 dark:bg-white/5"><Box className="w-3 h-3" /></Button>
+             <Button variant="ghost" size="icon" className="h-7 w-7 rounded-full bg-zinc-100 dark:bg-white/5" onClick={() => setView('goals')}><Box className="w-3 h-3" /></Button>
           </div>
-          <div className="space-y-4">
-            {goals.slice(0, 3).map((g, idx) => {
-               const progress = Math.min((g.currentAmount / g.targetAmount) * 100, 100);
-               return (
-                 <div key={g.id} className="group">
-                   <div className="flex justify-between items-end mb-2">
-                     <span className="text-xs font-semibold safe-text max-w-[70%] group-hover:text-brand-500 transition-colors">{g.name}</span>
-                     <span className="font-mono text-[10px] text-zinc-500 dark:text-zinc-400">{progress.toFixed(0)}%</span>
-                   </div>
-                   <div className="h-2 w-full bg-zinc-100 dark:bg-black/40 rounded-full overflow-hidden shadow-inner border border-zinc-200 dark:border-white/5">
-                     <div 
-                       className="h-full bg-gradient-to-r from-brand-600 via-brand-500 to-brand-400 rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(124,92,255,0.5)] relative" 
-                       style={{ width: `${progress}%`, transitionDelay: `${idx * 200}ms` }} 
-                     >
-                        <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]" style={{backgroundImage: 'linear-gradient(90deg,transparent,rgba(255,255,255,0.5),transparent)', transform: 'skewX(-20deg)'}} />
+          {goals.length > 0 ? (
+            <div className="space-y-4">
+              {goals.filter(g => g.status === 'active').slice(0, 3).map((g, idx) => {
+                 const progress = Math.min((g.currentAmount / g.targetAmount) * 100, 100);
+                 return (
+                   <div key={g.id} className="group">
+                     <div className="flex justify-between items-end mb-2">
+                       <span className="text-xs font-semibold safe-text max-w-[70%] group-hover:text-brand-500 transition-colors">{g.name}</span>
+                       <span className="font-mono text-[10px] text-zinc-500 dark:text-zinc-400">{progress.toFixed(0)}%</span>
+                     </div>
+                     <div className="h-2 w-full bg-zinc-100 dark:bg-black/40 rounded-full overflow-hidden shadow-inner border border-zinc-200 dark:border-white/5">
+                       <div
+                         className="h-full bg-gradient-to-r from-brand-600 via-brand-500 to-brand-400 rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(124,92,255,0.5)] relative"
+                         style={{ width: `${progress}%`, transitionDelay: `${idx * 200}ms` }}
+                       >
+                          <div className="absolute inset-0 bg-white/20 animate-[shimmer_2s_infinite]" style={{backgroundImage: 'linear-gradient(90deg,transparent,rgba(255,255,255,0.5),transparent)', transform: 'skewX(-20deg)'}} />
+                       </div>
                      </div>
                    </div>
-                 </div>
-               )
-            })}
-          </div>
+                 )
+              })}
+            </div>
+          ) : (
+            <button onClick={() => setView('goals')} className="w-full text-center py-4 group cursor-pointer">
+              <Target className="w-8 h-8 text-zinc-300 dark:text-zinc-600 mx-auto mb-2 group-hover:text-brand-500 transition-colors" />
+              <p className="text-xs text-zinc-400 group-hover:text-brand-500 transition-colors">
+                {language === 'es' ? 'Crea tu primera meta de ahorro' : 'Create your first savings goal'}
+              </p>
+            </button>
+          )}
         </Card>
       </div>
     </div>

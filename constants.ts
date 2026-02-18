@@ -1,4 +1,4 @@
-import { Account, Budget, CreditCard, Debt, Goal, Transaction } from './types';
+import { Account, PlanItem, CreditCard, Debt, Goal, Transaction } from './types';
 
 export const FX_RATES = {
   COP: 1,
@@ -16,6 +16,7 @@ export const TRANSLATIONS = {
     'nav.accounts': 'Accounts',
     'nav.debts': 'Risk & Debts',
     'nav.goals': 'Goals',
+    'nav.planner': 'Planner',
     'nav.settings': 'Settings',
     'nav.ai': 'AI Assistant',
     // Dashboard
@@ -114,6 +115,7 @@ export const TRANSLATIONS = {
     'nav.accounts': 'Cuentas',
     'nav.debts': 'Riesgo y Deudas',
     'nav.goals': 'Metas',
+    'nav.planner': 'Planificación',
     'nav.settings': 'Ajustes',
     'nav.ai': 'Asistente IA',
     'dash.total': 'Balance Total',
@@ -224,11 +226,12 @@ export const DEMO_CREDIT_CARDS: CreditCard[] = [
 ];
 
 export const DEMO_GOALS: Goal[] = [
-  { id: 'g1', name: 'Emergency Fund', targetAmount: 10000000, currentAmount: 2500000, currency: 'COP', status: 'active' },
-  { id: 'g2', name: 'New Mac Studio', targetAmount: 2000, currentAmount: 1200, currency: 'USD', status: 'active' },
+  { id: 'g1', name: 'Emergency Fund', targetAmount: 10000000, currentAmount: 2500000, currency: 'COP', status: 'active', contributions: [] },
+  { id: 'g2', name: 'New Mac Studio', targetAmount: 2000, currentAmount: 1200, currency: 'USD', status: 'active', contributions: [] },
 ];
 
-export const DEMO_BUDGETS: Budget[] = [
-  { id: 'b1', category: 'Food', limit: 800000, spent: 450000, currency: 'COP' },
-  { id: 'b2', category: 'Transport', limit: 300000, spent: 280000, currency: 'COP' },
+export const DEMO_PLAN_ITEMS: PlanItem[] = [
+  { id: 'p1', type: 'income', concept: 'Salary', planned: 5000000, real: 0, month: '2026-02', currency: 'COP' },
+  { id: 'p2', type: 'expense', concept: 'Food', planned: 800000, real: 0, month: '2026-02', currency: 'COP' },
+  { id: 'p3', type: 'expense', concept: 'Transport', planned: 300000, real: 0, month: '2026-02', currency: 'COP' },
 ];
