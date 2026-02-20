@@ -1,6 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import Anthropic from '@anthropic-ai/sdk';
+import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -313,6 +314,63 @@ Responde SOLO con el resumen, sin formato JSON.`,
     } catch (error: any) {
         console.error('Summary Error:', error);
         res.json({ summary: null, error: error.message });
+    }
+});
+
+// Feedback endpoint — email is NEVER exposed to the client
+app.post('/api/feedback', async (req, res) => {
+    try {
+        const { name, message, type } = req.body;
+
+        if (!message || !message.trim()) {
+            return res.status(400).json({ success: false, error: 'Message is required' });
+        }
+
+        const feedbackEmail = process.env.FEEDBACK_EMAIL;
+        const gmailPassword = process.env.GMAIL_APP_PASSWORD;
+
+        if (!feedbackEmail || !gmailPassword) {
+            console.error('Missing FEEDBACK_EMAIL or GMAIL_APP_PASSWORD in .env');
+            return res.status(500).json({ success: false, error: 'Server configuration error' });
+        }
+
+        const transporter = nodemailer.createTransport({
+            service: 'gmail',
+            auth: {
+                user: feedbackEmail,
+                pass: gmailPassword,
+            },
+        });
+
+        const typeLabels: Record<string, string> = {
+            comment: '💬 Comentario',
+            bug: '🐛 Bug Report',
+            request: '✨ Solicitud',
+        };
+
+        await transporter.sendMail({
+            from: feedbackEmail,
+            to: feedbackEmail,
+            subject: `[UFlow] ${typeLabels[type] || type} — ${name || 'Anónimo'}`,
+            html: `
+                <div style="font-family:system-ui,sans-serif;max-width:500px;margin:0 auto;padding:20px;">
+                    <h2 style="color:#7C5CFF;margin-bottom:4px;">UFlow Feedback</h2>
+                    <p style="color:#888;font-size:12px;margin-top:0;">Tipo: ${typeLabels[type] || type}</p>
+                    <hr style="border:none;border-top:1px solid #eee;margin:16px 0;" />
+                    <p><strong>De:</strong> ${name || 'Anónimo'}</p>
+                    <p><strong>Mensaje:</strong></p>
+                    <div style="background:#f9f9f9;border-radius:8px;padding:12px;white-space:pre-wrap;">${message}</div>
+                    <hr style="border:none;border-top:1px solid #eee;margin:16px 0;" />
+                    <p style="color:#aaa;font-size:10px;">Enviado desde UFlow System — ${new Date().toLocaleString('es-CO')}</p>
+                </div>
+            `,
+        });
+
+        console.log('📧 Feedback sent:', type, name || 'Anónimo');
+        res.json({ success: true });
+    } catch (error: any) {
+        console.error('Feedback email error:', error);
+        res.status(500).json({ success: false, error: 'Failed to send feedback' });
     }
 });
 

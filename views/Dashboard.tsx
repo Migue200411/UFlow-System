@@ -1,11 +1,42 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { convertToBase } from '../utils';
+import { convertToBase, cn } from '../utils';
 import { Card, Money, Badge, Button } from '../components/UIComponents';
-import { ArrowUpRight, ArrowDownLeft, Wallet, CreditCard, Activity, Box, ArrowRightLeft, Receipt, Download, Zap, Target } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, Wallet, CreditCard, Activity, Box, ArrowRightLeft, Receipt, Download, Zap, Target, MessageSquare, Send, ChevronDown } from 'lucide-react';
 
 export const DashboardView: React.FC = () => {
-  const { accounts, transactions, debts, creditCards, goals, currencyBase, timezone, t, language, reduceMotion, setEditingTransaction, setView } = useApp();
+  const { accounts, transactions, debts, creditCards, goals, sharedAccounts, user, currencyBase, timezone, t, language, reduceMotion, setEditingTransaction, setView, addToast } = useApp();
+
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [fbType, setFbType] = useState<'comment' | 'bug' | 'request'>('comment');
+  const [fbName, setFbName] = useState('');
+  const [fbMessage, setFbMessage] = useState('');
+  const [fbSending, setFbSending] = useState(false);
+
+  const handleSendFeedback = async () => {
+    if (!fbMessage.trim()) return;
+    setFbSending(true);
+    try {
+      const res = await fetch('http://localhost:3001/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: fbName, message: fbMessage, type: fbType }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        addToast(t('dash.feedback.success'), 'success');
+        setFbMessage('');
+        setFbName('');
+        setFbType('comment');
+        setFeedbackOpen(false);
+      } else {
+        addToast(t('dash.feedback.error'), 'error');
+      }
+    } catch {
+      addToast(t('dash.feedback.error'), 'error');
+    }
+    setFbSending(false);
+  };
 
   // --- Optimized Calculations (Memoized) ---
   const { assets, liabilities, receivables, available, relative, burnRate, savings, riskScore, ccUtil } = useMemo(() => {
@@ -39,6 +70,31 @@ export const DashboardView: React.FC = () => {
        } else {
          totalAssets += amountInBase;
        }
+    });
+
+    // 1b. Add shared account balances (user's net contribution)
+    sharedAccounts.forEach(sa => {
+      const members = Object.keys(sa.members);
+      const myUid = user?.uid || '';
+      let myContributed = 0;
+      let mySpent = 0;
+      let totalShared = 0;
+
+      (sa.transactions || []).forEach(tx => {
+        if (tx.type === 'income') {
+          if (tx.createdBy === myUid) myContributed += tx.amount;
+        } else if (tx.type === 'expense') {
+          if (tx.isShared) {
+            totalShared += tx.amount;
+          } else if (tx.createdBy === myUid) {
+            mySpent += tx.amount;
+          }
+        }
+      });
+
+      const myShareOfShared = totalShared / (members.length || 1);
+      const myNet = myContributed - mySpent - myShareOfShared;
+      totalAssets += convertToBase(myNet, sa.currency, currencyBase);
     });
 
     // 2. Calculate Liabilities (Debts I owe + Credit Card balances)
@@ -96,7 +152,7 @@ export const DashboardView: React.FC = () => {
         riskScore,
         ccUtil,
     };
-  }, [accounts, transactions, debts, creditCards, goals, currencyBase]);
+  }, [accounts, transactions, debts, creditCards, goals, sharedAccounts, user, currencyBase]);
 
   const recentTx = useMemo(() => {
       return [...transactions].sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 8);
@@ -215,7 +271,6 @@ export const DashboardView: React.FC = () => {
         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar px-1 py-1">
           {[
             { icon: ArrowRightLeft, label: t('act.transfer') },
-            { icon: Receipt, label: t('act.scan') },
             { icon: Box, label: 'Goal' },
             { icon: Download, label: 'CSV' }
           ].map((cmd, i) => (
@@ -355,6 +410,79 @@ export const DashboardView: React.FC = () => {
                 {language === 'es' ? 'Crea tu primera meta de ahorro' : 'Create your first savings goal'}
               </p>
             </button>
+          )}
+        </Card>
+
+        {/* Feedback */}
+        <Card className={cn("overflow-hidden transition-all duration-300", !reduceMotion && 'animate-in fade-in slide-in-from-bottom-8 duration-700 delay-[1200ms]')}>
+          <button
+            onClick={() => setFeedbackOpen(!feedbackOpen)}
+            className="w-full flex items-center justify-between group"
+          >
+            <div className="flex items-center gap-2">
+              <MessageSquare className="w-3.5 h-3.5 text-brand-500" />
+              <span className="text-xs font-semibold text-zinc-600 dark:text-zinc-300 group-hover:text-brand-500 transition-colors">
+                {t('dash.feedback.teaser')}
+              </span>
+            </div>
+            <ChevronDown className={cn("w-3.5 h-3.5 text-zinc-400 transition-transform duration-200", feedbackOpen && "rotate-180")} />
+          </button>
+
+          {feedbackOpen && (
+            <div className="mt-3 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200">
+              {/* Type pills */}
+              <div className="flex gap-1.5">
+                {(['comment', 'bug', 'request'] as const).map(type => {
+                  const labels = { comment: language === 'es' ? 'Comentario' : 'Comment', bug: language === 'es' ? 'Error' : 'Bug', request: language === 'es' ? 'Solicitud' : 'Request' };
+                  return (
+                    <button
+                      key={type}
+                      onClick={() => setFbType(type)}
+                      className={cn(
+                        "text-[10px] font-bold uppercase px-2.5 py-1 rounded-full transition-colors",
+                        fbType === type
+                          ? type === 'bug' ? 'bg-red-500 text-white' : type === 'request' ? 'bg-amber-500 text-white' : 'bg-brand-500 text-white'
+                          : 'bg-zinc-100 dark:bg-white/5 text-zinc-400 hover:bg-zinc-200 dark:hover:bg-white/10'
+                      )}
+                    >
+                      {labels[type]}
+                    </button>
+                  );
+                })}
+              </div>
+              <input
+                value={fbName}
+                onChange={e => setFbName(e.target.value)}
+                placeholder={language === 'es' ? 'Tu nombre (opcional)' : 'Your name (optional)'}
+                className="w-full h-8 text-xs px-3 rounded-lg bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 outline-none focus:border-brand-500 transition-colors"
+              />
+              <textarea
+                value={fbMessage}
+                onChange={e => setFbMessage(e.target.value)}
+                placeholder={t('dash.feedback.placeholder')}
+                rows={3}
+                className="w-full text-xs px-3 py-2 rounded-lg bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 outline-none resize-none focus:border-brand-500 transition-colors"
+              />
+              <Button
+                variant="primary"
+                size="sm"
+                className="w-full"
+                onClick={handleSendFeedback}
+                disabled={!fbMessage.trim() || fbSending}
+              >
+                {fbSending ? (
+                  <span className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    {language === 'es' ? 'Enviando...' : 'Sending...'}
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-1.5">
+                    <Send className="w-3 h-3" />
+                    {t('dash.feedback.send')}
+                  </span>
+                )}
+              </Button>
+            </div>
           )}
         </Card>
       </div>

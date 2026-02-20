@@ -12,7 +12,6 @@ export interface UserProfile {
   uid: string;
   email: string | null;
   displayName: string | null;
-  photoURL: string | null;
   theme: Theme;
   language: Language;
   currencyBase: Currency;
@@ -106,6 +105,39 @@ export interface PlanItem {
   currency: Currency;
 }
 
+// --- Shared Accounts ---
+export interface SharedAccountMember {
+  displayName: string;
+  email: string;
+  joinedAt: string;
+  role: 'owner' | 'member';
+}
+
+export interface SharedTransaction {
+  id: string;
+  type: TransactionType;
+  amount: number;
+  currency: Currency;
+  category: string;
+  note: string;
+  date: string;
+  createdAt: number;
+  createdBy: string;       // uid
+  createdByName: string;   // displayName
+  isShared: boolean;       // split among all members
+}
+
+export interface SharedAccount {
+  id: string;
+  name: string;
+  currency: Currency;
+  ownerId: string;
+  inviteCode: string;
+  createdAt: string;
+  members: Record<string, SharedAccountMember>;
+  transactions: SharedTransaction[];
+}
+
 export interface AIMessage {
   id: string;
   role: 'user' | 'assistant';
@@ -133,6 +165,7 @@ export interface AppState {
   creditCards: CreditCard[];
   goals: Goal[];
   planItems: PlanItem[];
+  sharedAccounts: SharedAccount[];
 }
 
 export interface AppContextType extends AppState {
@@ -172,6 +205,12 @@ export interface AppContextType extends AppState {
   updatePlanItem: (id: string, data: Partial<PlanItem>) => void;
   deletePlanItem: (id: string) => void;
   payDebt: (id: string, amount: number) => void;
+  createSharedAccount: (name: string, currency: Currency) => Promise<void>;
+  joinSharedAccount: (code: string) => Promise<void>;
+  leaveSharedAccount: (accountId: string) => Promise<void>;
+  addSharedTransaction: (accountId: string, tx: Omit<SharedTransaction, 'id' | 'createdAt' | 'createdBy' | 'createdByName'>, overrides?: { createdBy: string; createdByName: string }) => Promise<void>;
+  deleteSharedTransaction: (accountId: string, txId: string) => Promise<void>;
+  regenerateInviteCode: (accountId: string) => Promise<void>;
   resetData: () => void;
   t: (key: string) => string;
   addToast: (message: string, type?: 'success' | 'error' | 'info') => void;

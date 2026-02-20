@@ -3,30 +3,40 @@ import { useApp } from '../context/AppContext';
 import { Card, Button, Input, Select, Badge, Money, Toggle, SegmentedControl, Modal, DatePicker } from '../components/UIComponents';
 import { convertToBase, cn, processAICommand, generateId, getTodayStr, dateToISO } from '../utils';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid, BarChart, Bar } from 'recharts';
-import { Moon, Sun, Monitor, Globe, Shield, CreditCard as CreditCardIcon, LogOut, User, Activity, TrendingUp, PieChart as PieIcon, Send, Sparkles, Bot, Wallet, Settings, Trash2, Plus, Pencil, ChevronDown, Check, Target } from 'lucide-react';
-import { AIMessage, CreditCard as CreditCardType } from '../types';
+import { Moon, Sun, Monitor, Globe, Shield, CreditCard as CreditCardIcon, LogOut, User, Activity, TrendingUp, PieChart as PieIcon, Send, Sparkles, Bot, Wallet, Settings, Trash2, Plus, Pencil, ChevronDown, Check, Target, Copy, RefreshCw, Users, ArrowLeft, UserPlus, Crown, Eye, EyeOff } from 'lucide-react';
+import { AIMessage, CreditCard as CreditCardType, SharedAccount, SharedAccountMember, SharedTransaction, Currency } from '../types';
 
 // --- HISTORY VIEW ---
 export const HistoryView = () => {
-  const { transactions, accounts, t, language, setEditingTransaction } = useApp();
+  const { transactions, accounts, sharedAccounts, t, language, setEditingTransaction } = useApp();
   const [filter, setFilter] = React.useState('');
   const [dateFrom, setDateFrom] = React.useState('');
   const [dateTo, setDateTo] = React.useState('');
   const [currentPage, setCurrentPage] = React.useState(1);
   const ITEMS_PER_PAGE = 10;
 
+  // Merge personal + shared transactions
+  type UnifiedTx = (typeof transactions[0] & { _shared?: false; _accountName?: string }) | (SharedTransaction & { _shared: true; _accountName: string });
+
+  const allTx = useMemo(() => {
+    const personal: UnifiedTx[] = transactions.map(tx => ({ ...tx, _shared: false as const }));
+    const shared: UnifiedTx[] = sharedAccounts.flatMap(sa =>
+      (sa.transactions || []).map(tx => ({ ...tx, _shared: true as const, _accountName: sa.name }))
+    );
+    return [...personal, ...shared];
+  }, [transactions, sharedAccounts]);
+
   const sortedTx = useMemo(() => {
-    return [...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [transactions]);
+    return [...allTx].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [allTx]);
 
   const filtered = useMemo(() => {
     return sortedTx.filter(tx => {
-      // Text filter
       const matchesText = filter === '' ||
         tx.category.toLowerCase().includes(filter.toLowerCase()) ||
-        tx.note.toLowerCase().includes(filter.toLowerCase());
+        tx.note.toLowerCase().includes(filter.toLowerCase()) ||
+        (tx._shared && tx._accountName.toLowerCase().includes(filter.toLowerCase()));
 
-      // Date filters
       const txDate = new Date(tx.date);
       const matchesFrom = !dateFrom || txDate >= new Date(dateFrom);
       const matchesTo = !dateTo || txDate <= new Date(dateTo + 'T23:59:59');
@@ -104,20 +114,33 @@ export const HistoryView = () => {
             </thead>
             <tbody className="divide-y divide-zinc-200/50 dark:divide-white/5 bg-white/50 dark:bg-dark-surface/50">
               {paginatedTx.map(tx => {
-                const isEditable = (Date.now() - tx.createdAt) < (72 * 60 * 60 * 1000);
+                const isShared = tx._shared;
+                const isEditable = !isShared && (Date.now() - tx.createdAt) < (72 * 60 * 60 * 1000);
                 return (
-                  <tr key={tx.id} className="hover:bg-brand-500/5 transition-colors group">
+                  <tr key={tx.id + (isShared ? '-s' : '')} className="hover:bg-brand-500/5 transition-colors group">
                     <td className="px-6 py-4 font-mono text-xs text-zinc-500 whitespace-nowrap">{new Date(tx.date).toLocaleDateString(undefined, { timeZone: 'UTC' })}</td>
-                    <td className="px-6 py-4 font-medium text-zinc-900 dark:text-zinc-100 safe-text">{tx.category}</td>
-                    <td className="px-6 py-4 text-zinc-500 max-w-[150px] safe-text" title={tx.note}>{tx.note}</td>
-                    <td className="px-6 py-4 text-xs text-zinc-500 safe-text">{accounts.find(a => a.id === tx.accountId)?.name || tx.currency}</td>
+                    <td className="px-6 py-4 font-medium text-zinc-900 dark:text-zinc-100 safe-text">
+                      <span>{tx.category}</span>
+                      {isShared && 'isShared' in tx && tx.isShared && <Badge variant="brand" className="ml-2 text-[9px] !py-0 !px-1">{language === 'es' ? 'compartido' : 'shared'}</Badge>}
+                    </td>
+                    <td className="px-6 py-4 text-zinc-500 max-w-[150px] safe-text" title={tx.note}>
+                      {isShared && 'createdByName' in tx ? <span className="text-brand-500">{tx.createdByName}</span> : null}
+                      {isShared && tx.note ? ' · ' : ''}{tx.note}
+                    </td>
+                    <td className="px-6 py-4 text-xs text-zinc-500 safe-text">
+                      {isShared ? (
+                        <span className="flex items-center gap-1"><Users className="w-3 h-3" />{tx._accountName}</span>
+                      ) : (
+                        accounts.find(a => a.id === (tx as any).accountId)?.name || tx.currency
+                      )}
+                    </td>
                     <td className={`px-6 py-4 text-right font-mono font-bold ${tx.type === 'income' ? 'text-green-600 dark:text-green-400 drop-shadow-sm' : 'text-zinc-900 dark:text-white'}`}>
                       {tx.type === 'expense' ? '-' : ''}<Money amount={tx.amount} currency={tx.currency} />
                     </td>
                     <td className="px-6 py-4 text-right">
                       {isEditable ?
-                        <button onClick={() => setEditingTransaction(tx)} className="cursor-pointer"><Badge variant="brand">EDIT 72H</Badge></button> :
-                        <span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-600 uppercase tracking-wider">LOCKED</span>
+                        <button onClick={() => setEditingTransaction(tx as any)} className="cursor-pointer"><Badge variant="brand">EDIT 72H</Badge></button> :
+                        <span className="text-[10px] font-bold text-zinc-400 dark:text-zinc-600 uppercase tracking-wider">{t('st.locked')}</span>
                       }
                     </td>
                   </tr>
@@ -1007,13 +1030,32 @@ export const PlannerView = () => {
 
 // --- ACCOUNTS VIEW ---
 export const AccountsView = () => {
-  const { accounts, addAccount, deleteAccount, updateAccount, addTransaction, transactions, timezone, t, currencyBase, user, language } = useApp();
+  const {
+    accounts, addAccount, deleteAccount, updateAccount, addTransaction, transactions, timezone, t, user, language,
+    sharedAccounts, createSharedAccount, joinSharedAccount, leaveSharedAccount, addSharedTransaction, deleteSharedTransaction, regenerateInviteCode
+  } = useApp();
+
+  // UI state
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [settingsAccount, setSettingsAccount] = useState<typeof accounts[0] | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [deleteAction, setDeleteAction] = useState<'transfer' | 'expense' | null>(null);
   const [transferToAccountId, setTransferToAccountId] = useState<string>('');
-  const [newAcc, setNewAcc] = useState({ name: '', type: 'individual', currency: 'COP', initialBalance: '' });
+  const [newAcc, setNewAcc] = useState({ name: '', type: 'individual' as 'individual' | 'shared', currency: 'COP' as Currency, initialBalance: '' });
+
+  // Shared account state
+  const [joinCode, setJoinCode] = useState('');
+  const [joining, setJoining] = useState(false);
+  const [showJoinInput, setShowJoinInput] = useState(false);
+  const [activeSharedAccount, setActiveSharedAccount] = useState<SharedAccount | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [showSharedTxForm, setShowSharedTxForm] = useState(false);
+  const [sharedTx, setSharedTx] = useState({ type: 'expense' as 'income' | 'expense', amount: '', category: '', note: '', isShared: true });
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+  const [showInviteCode, setShowInviteCode] = useState(false);
+  const [leaveAction, setLeaveAction] = useState<'transfer' | 'forfeit' | null>(null);
+  const [leaveTransferTo, setLeaveTransferTo] = useState('');
+  const [leaveRecipient, setLeaveRecipient] = useState('');
 
   // Calculate account balance from transactions
   const getAccountBalance = (accountId: string) => {
@@ -1032,94 +1074,100 @@ export const AccountsView = () => {
     return accounts.filter(acc => acc.id !== settingsAccount.id && acc.currency === settingsAccount.currency);
   };
 
-  const handleSave = () => {
-    if (!newAcc.name) return;
-    addAccount({
-      name: newAcc.name,
-      type: newAcc.type as 'individual' | 'shared',
-      currency: newAcc.currency as any,
-      initialBalance: newAcc.initialBalance ? parseFloat(newAcc.initialBalance) : undefined
+  // Per-member balance for shared accounts
+  const getMemberBalances = (sa: SharedAccount) => {
+    const members = Object.keys(sa.members);
+    const balances: Record<string, { contributed: number; spent: number; sharedExpense: number; net: number }> = {};
+    members.forEach(uid => { balances[uid] = { contributed: 0, spent: 0, sharedExpense: 0, net: 0 }; });
+
+    const totalSharedExpense = (sa.transactions || []).reduce((sum, tx) => {
+      if (tx.type === 'income') {
+        balances[tx.createdBy] && (balances[tx.createdBy].contributed += tx.amount);
+      } else if (tx.type === 'expense') {
+        if (tx.isShared) {
+          sum += tx.amount;
+        } else {
+          balances[tx.createdBy] && (balances[tx.createdBy].spent += tx.amount);
+        }
+      }
+      return sum;
+    }, 0);
+
+    const sharePerMember = totalSharedExpense / (members.length || 1);
+    members.forEach(uid => {
+      balances[uid].sharedExpense = sharePerMember;
+      balances[uid].net = balances[uid].contributed - balances[uid].spent - sharePerMember;
     });
+
+    return balances;
+  };
+
+  // Shared account total balance
+  const getSharedBalance = (sa: SharedAccount) => {
+    return (sa.transactions || []).reduce((sum, tx) => {
+      if (tx.type === 'income') return sum + tx.amount;
+      if (tx.type === 'expense') return sum - tx.amount;
+      return sum + tx.amount;
+    }, 0);
+  };
+
+  const handleSave = async () => {
+    if (!newAcc.name) return;
+    if (newAcc.type === 'shared') {
+      await createSharedAccount(newAcc.name, newAcc.currency);
+    } else {
+      addAccount({
+        name: newAcc.name,
+        type: 'individual',
+        currency: newAcc.currency,
+        initialBalance: newAcc.initialBalance ? parseFloat(newAcc.initialBalance) : undefined
+      });
+    }
     setIsModalOpen(false);
     setNewAcc({ name: '', type: 'individual', currency: 'COP', initialBalance: '' });
   };
 
-  const handleDelete = () => {
-    if (!settingsAccount) return;
-
-    const balance = getAccountBalance(settingsAccount.id);
-
-    // If there's positive balance, handle it based on user choice
-    if (balance > 0) {
-      if (deleteAction === 'transfer' && transferToAccountId) {
-        // Create transfer transaction to destination account (adjustment, not income)
-        addTransaction({
-          type: 'adjustment',
-          amount: balance,
-          currency: settingsAccount.currency,
-          accountId: transferToAccountId,
-          category: 'Transfer',
-          note: `Transferred from ${settingsAccount.name}`,
-          date: dateToISO(getTodayStr(timezone))
-        });
-      } else if (deleteAction === 'expense') {
-        // Mark as expense/withdrawal
-        addTransaction({
-          type: 'expense',
-          amount: balance,
-          currency: settingsAccount.currency,
-          accountId: settingsAccount.id,
-          category: 'Account Closure',
-          note: language === 'es' ? 'Cierre de cuenta' : 'Account closure',
-          date: dateToISO(getTodayStr(timezone))
-        });
-      }
-    }
-
-    deleteAccount(settingsAccount.id);
-    resetDeleteState();
+  const handleJoin = async () => {
+    if (!joinCode.trim()) return;
+    setJoining(true);
+    await joinSharedAccount(joinCode);
+    setJoining(false);
+    setJoinCode('');
+    setShowJoinInput(false);
   };
 
-  const handleLeaveAccount = () => {
-    if (!settingsAccount || !settingsAccount.members || !user) return;
+  const handleCopyCode = (code: string) => {
+    navigator.clipboard.writeText(code);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
 
+  const handleAddSharedTx = async () => {
+    if (!activeSharedAccount || !sharedTx.amount || !sharedTx.category) return;
+    await addSharedTransaction(activeSharedAccount.id, {
+      type: sharedTx.type,
+      amount: parseFloat(sharedTx.amount),
+      currency: activeSharedAccount.currency,
+      category: sharedTx.category,
+      note: sharedTx.note,
+      date: dateToISO(getTodayStr(timezone)),
+      isShared: sharedTx.type === 'expense' ? sharedTx.isShared : false,
+    });
+    setSharedTx({ type: 'expense', amount: '', category: '', note: '', isShared: true });
+    setShowSharedTxForm(false);
+  };
+
+  const handleDelete = () => {
+    if (!settingsAccount) return;
     const balance = getAccountBalance(settingsAccount.id);
-    const memberCount = settingsAccount.members.length;
-    const myShare = balance / memberCount;
-
-    // If there's balance and user's share is positive, they need to handle it
-    if (myShare > 0) {
+    if (balance > 0) {
       if (deleteAction === 'transfer' && transferToAccountId) {
-        // Use adjustment instead of income for transfers
-        addTransaction({
-          type: 'adjustment',
-          amount: myShare,
-          currency: settingsAccount.currency,
-          accountId: transferToAccountId,
-          category: 'Transfer',
-          note: `My share from ${settingsAccount.name}`,
-          date: dateToISO(getTodayStr(timezone))
-        });
-        // Reduce the shared account balance
-        addTransaction({
-          type: 'expense',
-          amount: myShare,
-          currency: settingsAccount.currency,
-          accountId: settingsAccount.id,
-          category: 'Member Exit',
-          note: `${user.displayName || user.email} left`,
-          date: dateToISO(getTodayStr(timezone))
-        });
+        addTransaction({ type: 'adjustment', amount: balance, currency: settingsAccount.currency, accountId: transferToAccountId, category: 'Transfer', note: `Transferred from ${settingsAccount.name}`, date: dateToISO(getTodayStr(timezone)) });
       } else if (deleteAction === 'expense') {
-        // Forfeit the share (nothing to do, just leave)
-      } else {
-        // Show options first
-        return;
+        addTransaction({ type: 'expense', amount: balance, currency: settingsAccount.currency, accountId: settingsAccount.id, category: 'Account Closure', note: language === 'es' ? 'Cierre de cuenta' : 'Account closure', date: dateToISO(getTodayStr(timezone)) });
       }
     }
-
-    const updatedMembers = settingsAccount.members.filter(m => m !== user.displayName && m !== user.email);
-    updateAccount(settingsAccount.id, { members: updatedMembers });
+    deleteAccount(settingsAccount.id);
     resetDeleteState();
   };
 
@@ -1134,16 +1182,328 @@ export const AccountsView = () => {
   const transferableAccounts = getTransferableAccounts();
   const hasBalance = accountBalance > 0;
 
+  // --- Shared Account Detail View ---
+  if (activeSharedAccount) {
+    const sa = sharedAccounts.find(s => s.id === activeSharedAccount.id) || activeSharedAccount;
+    const members = Object.entries(sa.members) as [string, SharedAccountMember][];
+    const balances = getMemberBalances(sa);
+    const totalBalance = getSharedBalance(sa);
+    const isOwner = sa.ownerId === user?.uid;
+
+    return (
+      <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
+        {/* Header */}
+        <div className="flex items-center gap-3">
+          <button onClick={() => { setActiveSharedAccount(null); setShowLeaveConfirm(false); }} className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-white/5 transition-colors">
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex-1">
+            <h2 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">{sa.name}</h2>
+            <p className="text-sm text-zinc-500">{sa.currency} · {members.length} {t('shared.members').toLowerCase()}</p>
+          </div>
+          <Button onClick={() => setShowSharedTxForm(true)}>
+            <Plus className="w-4 h-4" />
+            {t('shared.add_tx')}
+          </Button>
+        </div>
+
+        {/* Balance + Invite Code */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Card>
+            <p className="text-xs text-zinc-500 uppercase tracking-wide mb-1">{t('shared.balance')}</p>
+            <p className={`text-3xl font-mono font-bold ${totalBalance >= 0 ? 'text-brand-500' : 'text-red-500'}`}>
+              <Money amount={totalBalance} currency={sa.currency} />
+            </p>
+          </Card>
+          <Card>
+            <p className="text-xs text-zinc-500 uppercase tracking-wide mb-1">{t('shared.invite_code')}</p>
+            <div className="flex items-center gap-2 mt-1">
+              <code className="text-2xl font-mono font-bold text-zinc-900 dark:text-white tracking-[0.2em]">
+                {showInviteCode ? sa.inviteCode : '••••••••'}
+              </code>
+              <button onClick={() => setShowInviteCode(!showInviteCode)} className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-white/5 transition-colors text-zinc-500 hover:text-zinc-900 dark:hover:text-white">
+                {showInviteCode ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+              <button onClick={() => handleCopyCode(sa.inviteCode)} className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-white/5 transition-colors text-zinc-500 hover:text-zinc-900 dark:hover:text-white">
+                {copiedCode ? <Check className="w-4 h-4 text-brand-500" /> : <Copy className="w-4 h-4" />}
+              </button>
+              {isOwner && (
+                <button onClick={() => regenerateInviteCode(sa.id)} className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-white/5 transition-colors text-zinc-500 hover:text-zinc-900 dark:hover:text-white" title={t('shared.regenerate')}>
+                  <RefreshCw className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </Card>
+        </div>
+
+        {/* Members + Balances */}
+        <Card>
+          <h3 className="text-sm font-semibold text-zinc-900 dark:text-white mb-4 flex items-center gap-2">
+            <Users className="w-4 h-4" /> {t('shared.members')}
+          </h3>
+          <div className="space-y-3">
+            {members.map(([uid, member]) => {
+              const b = balances[uid] || { contributed: 0, spent: 0, sharedExpense: 0, net: 0 };
+              return (
+                <div key={uid} className="flex items-center gap-3 p-3 bg-zinc-50 dark:bg-white/5 rounded-xl">
+                  <div className="w-10 h-10 rounded-full bg-brand-500/10 border-2 border-brand-500/30 flex items-center justify-center text-sm font-bold text-brand-600">
+                    {member.displayName[0]?.toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm text-zinc-900 dark:text-white truncate">{member.displayName}</span>
+                      {member.role === 'owner' && <Crown className="w-3.5 h-3.5 text-amber-500" />}
+                    </div>
+                    <p className="text-xs text-zinc-500 truncate">{member.email}</p>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <p className={`text-sm font-mono font-bold ${b.net >= 0 ? 'text-brand-500' : 'text-red-500'}`}>
+                      <Money amount={b.net} currency={sa.currency} />
+                    </p>
+                    <p className="text-[10px] text-zinc-400">{t('shared.net')}</p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+
+        {/* Transactions */}
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold text-zinc-900 dark:text-white">{t('shared.transactions')}</h3>
+            <span className="text-[10px] text-zinc-400">{language === 'es' ? 'Editable solo 24h' : 'Editable 24h only'}</span>
+          </div>
+          {(!sa.transactions || sa.transactions.length === 0) ? (
+            <p className="text-sm text-zinc-500 text-center py-8">{t('shared.no_transactions')}</p>
+          ) : (
+            <div className="space-y-2">
+              {sa.transactions.map(tx => {
+                const isDeletable = (Date.now() - tx.createdAt) < (24 * 60 * 60 * 1000);
+                return (
+                  <div key={tx.id} className="flex items-center gap-3 p-3 rounded-lg hover:bg-zinc-50 dark:hover:bg-white/5 transition-colors group">
+                    <div className={`w-2 h-2 rounded-full shrink-0 ${tx.type === 'income' ? 'bg-brand-500' : 'bg-red-500'}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium text-zinc-900 dark:text-white">{tx.category}</span>
+                        {tx.isShared && <Badge variant="brand" className="text-[10px] !py-0 !px-1.5">{language === 'es' ? 'compartido' : 'shared'}</Badge>}
+                      </div>
+                      <p className="text-xs text-zinc-500">{tx.createdByName} · {new Date(tx.date).toLocaleDateString()}{tx.note ? ` · ${tx.note}` : ''}</p>
+                    </div>
+                    <span className={`text-sm font-mono font-bold shrink-0 ${tx.type === 'income' ? 'text-brand-500' : 'text-red-500'}`}>
+                      {tx.type === 'income' ? '+' : '-'}<Money amount={tx.amount} currency={sa.currency} />
+                    </span>
+                    {isDeletable ? (
+                      <button
+                        onClick={() => { if (confirm(t('shared.delete_confirm'))) deleteSharedTransaction(sa.id, tx.id); }}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/10 text-zinc-400 hover:text-red-500 transition-all"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    ) : (
+                      <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider">{t('st.locked')}</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+
+        {/* Leave Account */}
+        <div className="flex justify-end">
+          {!showLeaveConfirm ? (
+            <Button variant="ghost" className="text-red-500 hover:text-red-600 hover:bg-red-500/10" onClick={() => { setShowLeaveConfirm(true); setLeaveAction(null); setLeaveTransferTo(''); setLeaveRecipient(''); }}>
+              <LogOut className="w-4 h-4" />
+              {t('shared.leave')}
+            </Button>
+          ) : (() => {
+            const myBalance = balances[user?.uid || '']?.net || 0;
+            const hasMyBalance = myBalance > 0;
+            const otherMembers = members.filter(([uid]) => uid !== user?.uid);
+            const autoRecipient = otherMembers.length === 1 ? otherMembers[0][0] : '';
+
+            const handleLeave = async () => {
+              if (hasMyBalance) {
+                if (leaveAction === 'transfer' && leaveTransferTo) {
+                  // Withdrawal from shared account
+                  await addSharedTransaction(sa.id, {
+                    type: 'expense', amount: myBalance, currency: sa.currency,
+                    category: language === 'es' ? 'Retiro por salida' : 'Exit withdrawal',
+                    note: user?.displayName || '', date: dateToISO(getTodayStr(timezone)), isShared: false,
+                  });
+                  // Credit to personal account
+                  addTransaction({ type: 'adjustment', amount: myBalance, currency: sa.currency, accountId: leaveTransferTo, category: 'Transfer', note: language === 'es' ? `Mi parte de ${sa.name}` : `My share from ${sa.name}`, date: dateToISO(getTodayStr(timezone)) });
+                } else if (leaveAction === 'forfeit') {
+                  const recipientUid = leaveRecipient || autoRecipient;
+                  const recipientMember = sa.members[recipientUid];
+                  // Record: expense from leaving member + income to recipient (net zero for shared balance)
+                  await addSharedTransaction(sa.id, {
+                    type: 'expense', amount: myBalance, currency: sa.currency,
+                    category: language === 'es' ? 'Cesión por salida' : 'Exit forfeit',
+                    note: user?.displayName || '', date: dateToISO(getTodayStr(timezone)), isShared: false,
+                  });
+                  await addSharedTransaction(sa.id, {
+                    type: 'income', amount: myBalance, currency: sa.currency,
+                    category: language === 'es' ? 'Saldo recibido' : 'Balance received',
+                    note: language === 'es' ? `Cedido por ${user?.displayName || ''}` : `Forfeited by ${user?.displayName || ''}`,
+                    date: dateToISO(getTodayStr(timezone)), isShared: false,
+                  }, { createdBy: recipientUid, createdByName: recipientMember?.displayName || 'Member' });
+                }
+              }
+              await leaveSharedAccount(sa.id);
+              setActiveSharedAccount(null);
+            };
+
+            return (
+              <div className="w-full p-4 bg-red-500/10 border border-red-500/20 rounded-xl space-y-4">
+                {hasMyBalance ? (
+                  <>
+                    <p className="text-sm text-zinc-600 dark:text-zinc-300 text-center">
+                      {language === 'es'
+                        ? `Tu balance neto es de ${myBalance.toLocaleString()} ${sa.currency}. ¿Qué deseas hacer?`
+                        : `Your net balance is ${myBalance.toLocaleString()} ${sa.currency}. What do you want to do?`}
+                    </p>
+                    <div className="space-y-2">
+                      {/* Transfer to personal account */}
+                      {accounts.filter(a => a.currency === sa.currency).length > 0 && (
+                        <button
+                          className={cn('w-full p-3 rounded-lg border text-left text-sm flex items-center gap-3 transition-all', leaveAction === 'transfer' ? 'border-brand-500 bg-brand-500/10 text-brand-600' : 'border-zinc-200 dark:border-white/10 hover:border-brand-500/50')}
+                          onClick={() => { setLeaveAction('transfer'); setLeaveTransferTo(accounts.filter(a => a.currency === sa.currency)[0]?.id || ''); }}
+                        >
+                          <CreditCardIcon className="w-4 h-4" />
+                          {language === 'es' ? 'Retirar a cuenta personal' : 'Withdraw to personal account'}
+                        </button>
+                      )}
+                      {leaveAction === 'transfer' && (
+                        <Select
+                          value={leaveTransferTo}
+                          onChange={setLeaveTransferTo}
+                          options={accounts.filter(a => a.currency === sa.currency).map(a => ({ value: a.id, label: a.name }))}
+                          className="mt-2"
+                        />
+                      )}
+                      {/* Forfeit to another member */}
+                      <button
+                        className={cn('w-full p-3 rounded-lg border text-left text-sm flex items-center gap-3 transition-all', leaveAction === 'forfeit' ? 'border-amber-500 bg-amber-500/10 text-amber-600' : 'border-zinc-200 dark:border-white/10 hover:border-amber-500/50')}
+                        onClick={() => { setLeaveAction('forfeit'); setLeaveRecipient(autoRecipient); }}
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        {language === 'es' ? 'Ceder saldo a un miembro' : 'Forfeit balance to a member'}
+                      </button>
+                      {leaveAction === 'forfeit' && otherMembers.length > 1 && (
+                        <Select
+                          value={leaveRecipient}
+                          onChange={setLeaveRecipient}
+                          options={otherMembers.map(([uid, m]) => ({ value: uid, label: m.displayName }))}
+                          className="mt-2"
+                        />
+                      )}
+                      {leaveAction === 'forfeit' && otherMembers.length === 1 && (
+                        <p className="text-xs text-zinc-500 ml-1">
+                          → {otherMembers[0][1].displayName}
+                        </p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-sm text-red-600 dark:text-red-400 text-center">{t('shared.leave_confirm')}</p>
+                )}
+                <div className="flex gap-2">
+                  <Button variant="ghost" className="flex-1" onClick={() => setShowLeaveConfirm(false)}>{t('act.cancel')}</Button>
+                  <Button
+                    variant="danger"
+                    className="flex-1"
+                    disabled={hasMyBalance && (!leaveAction || (leaveAction === 'forfeit' && otherMembers.length > 1 && !leaveRecipient))}
+                    onClick={handleLeave}
+                  >
+                    {t('shared.leave')}
+                  </Button>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+
+        {/* Add Shared Transaction Modal */}
+        <Modal isOpen={showSharedTxForm} onClose={() => setShowSharedTxForm(false)} title={t('shared.add_tx')}>
+          <div className="space-y-4">
+            <div className="flex gap-2">
+              {(['income', 'expense'] as const).map(typ => (
+                <button
+                  key={typ}
+                  className={cn(
+                    'flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-all border',
+                    sharedTx.type === typ
+                      ? typ === 'income' ? 'border-brand-500 bg-brand-500/10 text-brand-600' : 'border-red-500 bg-red-500/10 text-red-600'
+                      : 'border-zinc-200 dark:border-white/10 text-zinc-500 hover:border-zinc-300'
+                  )}
+                  onClick={() => setSharedTx({ ...sharedTx, type: typ })}
+                >
+                  {typ === 'income' ? (language === 'es' ? 'Ingreso' : 'Income') : (language === 'es' ? 'Gasto' : 'Expense')}
+                </button>
+              ))}
+            </div>
+            <Input label={t('lbl.amount')} type="number" value={sharedTx.amount} onChange={e => setSharedTx({ ...sharedTx, amount: e.target.value })} placeholder="0" />
+            <Input label={t('lbl.category')} value={sharedTx.category} onChange={e => setSharedTx({ ...sharedTx, category: e.target.value })} placeholder={language === 'es' ? 'ej. Comida' : 'e.g. Food'} />
+            <Input label={t('lbl.desc')} value={sharedTx.note} onChange={e => setSharedTx({ ...sharedTx, note: e.target.value })} placeholder={language === 'es' ? 'Opcional' : 'Optional'} />
+            {sharedTx.type === 'expense' && (
+              <div className="flex items-center gap-3 p-3 bg-zinc-50 dark:bg-white/5 rounded-xl">
+                <button
+                  className={cn('flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-all', sharedTx.isShared ? 'border-brand-500 bg-brand-500/10 text-brand-600' : 'border-zinc-200 dark:border-white/10 text-zinc-500')}
+                  onClick={() => setSharedTx({ ...sharedTx, isShared: true })}
+                >
+                  <Users className="w-3.5 h-3.5 inline mr-1.5" />{t('shared.shared_expense')}
+                </button>
+                <button
+                  className={cn('flex-1 py-2 px-3 rounded-lg text-sm font-medium border transition-all', !sharedTx.isShared ? 'border-brand-500 bg-brand-500/10 text-brand-600' : 'border-zinc-200 dark:border-white/10 text-zinc-500')}
+                  onClick={() => setSharedTx({ ...sharedTx, isShared: false })}
+                >
+                  <User className="w-3.5 h-3.5 inline mr-1.5" />{t('shared.personal_expense')}
+                </button>
+              </div>
+            )}
+            <Button className="w-full mt-2" onClick={handleAddSharedTx}>{t('act.save')}</Button>
+          </div>
+        </Modal>
+      </div>
+    );
+  }
+
+  // --- Main Accounts List View ---
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-wrap justify-between items-center gap-3">
         <h2 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">{t('nav.accounts')}</h2>
-        <Button onClick={() => setIsModalOpen(true)}>
-          <CreditCardIcon className="w-4 h-4" />
-          {language === 'es' ? 'Nueva Cuenta' : 'Add Account'}
-        </Button>
+        <div className="flex gap-2">
+          {!showJoinInput ? (
+            <Button variant="secondary" onClick={() => setShowJoinInput(true)}>
+              <UserPlus className="w-4 h-4" />
+              {t('shared.join')}
+            </Button>
+          ) : (
+            <div className="flex gap-2 items-center">
+              <Input
+                value={joinCode}
+                onChange={e => setJoinCode(e.target.value.toUpperCase())}
+                placeholder={t('shared.join_placeholder')}
+                className="!w-44 font-mono tracking-wider uppercase"
+                onKeyDown={e => e.key === 'Enter' && handleJoin()}
+              />
+              <Button onClick={handleJoin} disabled={joining || !joinCode.trim()}>
+                {joining ? '...' : <Check className="w-4 h-4" />}
+              </Button>
+              <button onClick={() => { setShowJoinInput(false); setJoinCode(''); }} className="text-zinc-400 hover:text-zinc-600 p-1">✕</button>
+            </div>
+          )}
+          <Button onClick={() => setIsModalOpen(true)}>
+            <Plus className="w-4 h-4" />
+            {language === 'es' ? 'Nueva Cuenta' : 'Add Account'}
+          </Button>
+        </div>
       </div>
 
+      {/* Individual Accounts */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {accounts.map(acc => {
           const balance = getAccountBalance(acc.id);
@@ -1157,22 +1517,12 @@ export const AccountsView = () => {
                 <Wallet className="w-24 h-24" />
               </div>
               <div className="relative z-10">
-                <Badge variant={acc.type === 'shared' ? 'brand' : 'neutral'} className="mb-4">{acc.type}</Badge>
+                <Badge variant="neutral" className="mb-4">individual</Badge>
                 <h3 className="text-xl font-bold text-zinc-900 dark:text-white mb-1">{acc.name}</h3>
                 <p className={`text-2xl font-mono font-bold mb-2 ${balance >= 0 ? 'text-brand-500' : 'text-red-500'}`}>
                   <Money amount={balance} currency={acc.currency} />
                 </p>
                 <p className="text-xs text-zinc-500 font-mono">{acc.currency}</p>
-
-                {acc.members && (
-                  <div className="flex items-center -space-x-2 mt-4">
-                    {acc.members.map((m, i) => (
-                      <div key={i} className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-700 border-2 border-white dark:border-black flex items-center justify-center text-[10px] font-bold">
-                        {m[0]}
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
               <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
                 <Settings className="w-4 h-4 text-zinc-400" />
@@ -1180,25 +1530,87 @@ export const AccountsView = () => {
             </Card>
           );
         })}
+
+        {/* Shared Accounts */}
+        {sharedAccounts.map(sa => {
+          const balance = getSharedBalance(sa);
+          const memberList = Object.values(sa.members) as SharedAccountMember[];
+          return (
+            <Card
+              key={sa.id}
+              className="relative group overflow-hidden cursor-pointer hover:border-brand-500/30 transition-all"
+              onClick={() => setActiveSharedAccount(sa)}
+            >
+              <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:scale-110 transition-transform duration-500">
+                <Users className="w-24 h-24" />
+              </div>
+              <div className="relative z-10">
+                <Badge variant="brand" className="mb-4">{language === 'es' ? 'compartida' : 'shared'}</Badge>
+                <h3 className="text-xl font-bold text-zinc-900 dark:text-white mb-1">{sa.name}</h3>
+                <p className={`text-2xl font-mono font-bold mb-2 ${balance >= 0 ? 'text-brand-500' : 'text-red-500'}`}>
+                  <Money amount={balance} currency={sa.currency} />
+                </p>
+                <p className="text-xs text-zinc-500 font-mono">{sa.currency}</p>
+                <div className="flex items-center -space-x-2 mt-4">
+                  {memberList.slice(0, 5).map((m, i) => (
+                    <div key={i} className="w-8 h-8 rounded-full bg-brand-500/10 border-2 border-white dark:border-black flex items-center justify-center text-[10px] font-bold text-brand-600" title={m.displayName}>
+                      {m.displayName[0]?.toUpperCase()}
+                    </div>
+                  ))}
+                  {memberList.length > 5 && (
+                    <div className="w-8 h-8 rounded-full bg-zinc-200 dark:bg-zinc-700 border-2 border-white dark:border-black flex items-center justify-center text-[10px] font-bold">
+                      +{memberList.length - 5}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </Card>
+          );
+        })}
       </div>
 
+      {accounts.length === 0 && sharedAccounts.length === 0 && (
+        <Card className="text-center py-12">
+          <Wallet className="w-12 h-12 text-zinc-300 dark:text-zinc-600 mx-auto mb-4" />
+          <p className="text-zinc-500">{t('empty.generic')}</p>
+        </Card>
+      )}
+
       {/* Add Account Modal */}
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={language === 'es' ? 'Nueva Cuenta' : 'Add New Account'}>
+      <Modal isOpen={isModalOpen} onClose={() => { setIsModalOpen(false); setNewAcc({ name: '', type: 'individual', currency: 'COP', initialBalance: '' }); }} title={language === 'es' ? 'Nueva Cuenta' : 'Add New Account'}>
         <div className="space-y-4">
-          <Input label={language === 'es' ? 'Nombre' : 'Name'} value={newAcc.name} onChange={e => setNewAcc({ ...newAcc, name: e.target.value })} placeholder={language === 'es' ? 'ej. Ahorros' : 'e.g. Savings'} />
-          <Input label={language === 'es' ? 'Saldo Inicial' : 'Initial Balance'} type="number" value={newAcc.initialBalance} onChange={e => setNewAcc({ ...newAcc, initialBalance: e.target.value })} placeholder="0" />
-          <Select label={language === 'es' ? 'Tipo' : 'Type'} value={newAcc.type} onChange={v => setNewAcc({ ...newAcc, type: v })} options={[{ value: 'individual', label: 'Individual' }, { value: 'shared', label: language === 'es' ? 'Compartida' : 'Shared' }]} />
-          <Select label={language === 'es' ? 'Moneda' : 'Currency'} value={newAcc.currency} onChange={v => setNewAcc({ ...newAcc, currency: v })} options={[{ value: 'COP', label: 'COP' }, { value: 'USD', label: 'USD' }, { value: 'EUR', label: 'EUR' }]} />
-          <Button className="w-full mt-4" onClick={handleSave}>{language === 'es' ? 'Crear Cuenta' : 'Create Account'}</Button>
+          <div className="flex gap-2">
+            {(['individual', 'shared'] as const).map(typ => (
+              <button
+                key={typ}
+                className={cn(
+                  'flex-1 py-2.5 px-3 rounded-lg text-sm font-medium transition-all border flex items-center justify-center gap-2',
+                  newAcc.type === typ ? 'border-brand-500 bg-brand-500/10 text-brand-600' : 'border-zinc-200 dark:border-white/10 text-zinc-500 hover:border-zinc-300'
+                )}
+                onClick={() => setNewAcc({ ...newAcc, type: typ })}
+              >
+                {typ === 'individual' ? <Wallet className="w-4 h-4" /> : <Users className="w-4 h-4" />}
+                {typ === 'individual' ? 'Individual' : (language === 'es' ? 'Compartida' : 'Shared')}
+              </button>
+            ))}
+          </div>
+          <Input label={t('shared.name')} value={newAcc.name} onChange={e => setNewAcc({ ...newAcc, name: e.target.value })} placeholder={language === 'es' ? 'ej. Ahorros' : 'e.g. Savings'} />
+          {newAcc.type === 'individual' && (
+            <Input label={language === 'es' ? 'Saldo Inicial' : 'Initial Balance'} type="number" value={newAcc.initialBalance} onChange={e => setNewAcc({ ...newAcc, initialBalance: e.target.value })} placeholder="0" />
+          )}
+          <Select label={language === 'es' ? 'Moneda' : 'Currency'} value={newAcc.currency} onChange={v => setNewAcc({ ...newAcc, currency: v as Currency })} options={[{ value: 'COP', label: 'COP' }, { value: 'USD', label: 'USD' }, { value: 'EUR', label: 'EUR' }]} />
+          <Button className="w-full mt-4" onClick={handleSave}>
+            {newAcc.type === 'shared' ? t('shared.create') : (language === 'es' ? 'Crear Cuenta' : 'Create Account')}
+          </Button>
         </div>
       </Modal>
 
-      {/* Account Settings Modal */}
+      {/* Individual Account Settings Modal */}
       <Modal isOpen={!!settingsAccount} onClose={resetDeleteState} title={settingsAccount?.name || ''}>
         {settingsAccount && (
           <div className="space-y-6">
             <div className="p-4 bg-zinc-50 dark:bg-white/5 rounded-xl">
-              <p className="text-xs text-zinc-500 uppercase tracking-wide mb-1">{language === 'es' ? 'Balance' : 'Balance'}</p>
+              <p className="text-xs text-zinc-500 uppercase tracking-wide mb-1">Balance</p>
               <p className={`text-3xl font-mono font-bold ${accountBalance >= 0 ? 'text-brand-500' : 'text-red-500'}`}>
                 <Money amount={accountBalance} currency={settingsAccount.currency} />
               </p>
@@ -1207,23 +1619,9 @@ export const AccountsView = () => {
             <div className="space-y-2 text-sm">
               <div className="flex justify-between"><span className="text-zinc-500">{language === 'es' ? 'Tipo' : 'Type'}</span><span className="font-medium capitalize">{settingsAccount.type}</span></div>
               <div className="flex justify-between"><span className="text-zinc-500">{language === 'es' ? 'Moneda' : 'Currency'}</span><span className="font-medium">{settingsAccount.currency}</span></div>
-              {settingsAccount.members && <div className="flex justify-between"><span className="text-zinc-500">{language === 'es' ? 'Miembros' : 'Members'}</span><span className="font-medium">{settingsAccount.members.length}</span></div>}
             </div>
 
             <div className="space-y-3 pt-4 border-t border-zinc-200 dark:border-white/10">
-              {/* Leave shared account */}
-              {settingsAccount.type === 'shared' && settingsAccount.members && settingsAccount.members.length > 1 && (
-                <>
-                  {!showDeleteConfirm && (
-                    <Button variant="secondary" className="w-full" onClick={() => { setShowDeleteConfirm(true); setDeleteAction(null); }}>
-                      <LogOut className="w-4 h-4" />
-                      {language === 'es' ? 'Salir de la Cuenta' : 'Leave Account'}
-                    </Button>
-                  )}
-                </>
-              )}
-
-              {/* Delete button */}
               {!showDeleteConfirm ? (
                 <Button variant="danger" className="w-full" onClick={() => setShowDeleteConfirm(true)}>
                   <Trash2 className="w-4 h-4" />
@@ -1231,7 +1629,6 @@ export const AccountsView = () => {
                 </Button>
               ) : (
                 <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-xl space-y-4">
-                  {/* If has balance, show options */}
                   {hasBalance && (
                     <>
                       <p className="text-sm text-zinc-600 dark:text-zinc-300 text-center">
@@ -1239,7 +1636,6 @@ export const AccountsView = () => {
                           ? `Esta cuenta tiene un saldo de ${accountBalance.toLocaleString()} ${settingsAccount.currency}. ¿Qué deseas hacer con el saldo?`
                           : `This account has a balance of ${accountBalance.toLocaleString()} ${settingsAccount.currency}. What do you want to do with it?`}
                       </p>
-
                       <div className="space-y-2">
                         {transferableAccounts.length > 0 && (
                           <button
@@ -1250,16 +1646,9 @@ export const AccountsView = () => {
                             {language === 'es' ? 'Transferir a otra cuenta' : 'Transfer to another account'}
                           </button>
                         )}
-
                         {deleteAction === 'transfer' && (
-                          <Select
-                            value={transferToAccountId}
-                            onChange={setTransferToAccountId}
-                            options={transferableAccounts.map(acc => ({ value: acc.id, label: acc.name }))}
-                            className="mt-2"
-                          />
+                          <Select value={transferToAccountId} onChange={setTransferToAccountId} options={transferableAccounts.map(acc => ({ value: acc.id, label: acc.name }))} className="mt-2" />
                         )}
-
                         <button
                           className={`w-full p-3 rounded-lg border text-left text-sm flex items-center gap-3 transition-all ${deleteAction === 'expense' ? 'border-red-500 bg-red-500/10 text-red-600' : 'border-zinc-200 dark:border-white/10 hover:border-red-500/50'}`}
                           onClick={() => setDeleteAction('expense')}
@@ -1270,25 +1659,14 @@ export const AccountsView = () => {
                       </div>
                     </>
                   )}
-
                   {!hasBalance && (
                     <p className="text-sm text-red-600 dark:text-red-400 text-center">
                       {language === 'es' ? '¿Estás seguro? Esta acción no se puede deshacer.' : 'Are you sure? This cannot be undone.'}
                     </p>
                   )}
-
                   <div className="flex gap-2">
-                    <Button variant="ghost" className="flex-1" onClick={resetDeleteState}>
-                      {language === 'es' ? 'Cancelar' : 'Cancel'}
-                    </Button>
-                    <Button
-                      variant="danger"
-                      className="flex-1"
-                      onClick={handleDelete}
-                      disabled={hasBalance && !deleteAction}
-                    >
-                      {language === 'es' ? 'Eliminar' : 'Delete'}
-                    </Button>
+                    <Button variant="ghost" className="flex-1" onClick={resetDeleteState}>{t('act.cancel')}</Button>
+                    <Button variant="danger" className="flex-1" onClick={handleDelete} disabled={hasBalance && !deleteAction}>{t('act.delete')}</Button>
                   </div>
                 </div>
               )}

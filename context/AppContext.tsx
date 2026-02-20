@@ -1,13 +1,14 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import {
   AppContextType, AppState, Theme, Language, Currency, ViewState,
-  Transaction, Account, Debt, CreditCard, Goal, PlanItem, UserProfile
+  Transaction, Account, Debt, CreditCard, Goal, PlanItem, UserProfile,
+  SharedAccount, SharedTransaction
 } from '../types';
 import { DEMO_ACCOUNTS, DEMO_PLAN_ITEMS, DEMO_CREDIT_CARDS, DEMO_DEBTS, DEMO_GOALS, DEMO_TRANSACTIONS, TRANSLATIONS } from '../constants';
 import { generateId, getTodayStr, dateToISO } from '../utils';
 import { auth, db, googleProvider } from '../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, signOut, onAuthStateChanged, updateProfile, User } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, deleteDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
@@ -28,6 +29,7 @@ const INITIAL_STATE: AppState = {
   creditCards: DEMO_CREDIT_CARDS,
   goals: DEMO_GOALS,
   planItems: DEMO_PLAN_ITEMS,
+  sharedAccounts: [],
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -41,6 +43,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const lastSavedDataRef = useRef<string>('');
   const latestSaveDataRef = useRef<{ uid: string; data: any } | null>(null);
+  const sharedListenersRef = useRef<Unsubscribe[]>([]);
 
   // --- 1. PERSISTENCE LAYER (FIREBASE ONLY) ---
   // Keep a ref with latest data (sanitized) so beforeunload always has current state
@@ -181,6 +184,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Load shared accounts where user is a member + setup real-time listeners
+  const loadSharedAccounts = async (uid: string) => {
+    // Cleanup previous listeners
+    sharedListenersRef.current.forEach(unsub => unsub());
+    sharedListenersRef.current = [];
+
+    try {
+      // Firestore doesn't support querying nested map keys directly,
+      // so we query all sharedAccounts and filter client-side.
+      // For scale, you'd use a memberUids array field — but for now this is fine.
+      const snap = await getDocs(collection(db, 'sharedAccounts'));
+      const accounts: SharedAccount[] = [];
+
+      snap.forEach(docSnap => {
+        const data = docSnap.data();
+        if (data.members && data.members[uid]) {
+          accounts.push({ ...data, id: docSnap.id } as SharedAccount);
+        }
+      });
+
+      setState(prev => ({ ...prev, sharedAccounts: accounts }));
+
+      // Setup real-time listeners for each shared account
+      accounts.forEach(acc => {
+        const unsub = onSnapshot(doc(db, 'sharedAccounts', acc.id), (docSnap) => {
+          const snapId = docSnap.id;
+          if (docSnap.exists()) {
+            const updated = { ...docSnap.data(), id: snapId } as SharedAccount;
+            setState(prev => ({
+              ...prev,
+              sharedAccounts: prev.sharedAccounts.map(sa => sa.id === updated.id ? updated : sa)
+            }));
+          } else {
+            setState(prev => ({
+              ...prev,
+              sharedAccounts: prev.sharedAccounts.filter(sa => sa.id !== snapId)
+            }));
+          }
+        });
+        sharedListenersRef.current.push(unsub);
+      });
+    } catch (e) {
+      console.warn('Failed to load shared accounts:', e);
+    }
+  };
+
   // Save user's app data to Firestore (called by debounced effect)
   // No separate function needed - logic is in useEffect
 
@@ -207,7 +256,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           uid: uid,
           email: baseUser.email,
           displayName: baseUser.displayName,
-          photoURL: baseUser.photoURL,
           theme: 'light',
           language: 'en',
           currencyBase: 'COP',
@@ -221,8 +269,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setState(prev => ({ ...prev, user: newProfile }));
       }
 
-      // Load app data after profile
+      // Load app data + shared accounts after profile
       await loadUserData(uid);
+      await loadSharedAccounts(uid);
 
     } catch (e) {
       console.warn("Profile sync error", e);
@@ -236,7 +285,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           uid: firebaseUser.uid,
           email: firebaseUser.email,
           displayName: firebaseUser.displayName,
-          photoURL: firebaseUser.photoURL,
           theme: state.theme,
           language: state.language,
           currencyBase: state.currencyBase,
@@ -257,7 +305,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           debts: [],
           creditCards: [],
           goals: [],
-          planItems: []
+          planItems: [],
+          sharedAccounts: []
         }));
 
         if (!isAuthCheckComplete.current) {
@@ -275,7 +324,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         });
 
       } else {
-        // User logged out - reset to demo data (in memory only, not persisted)
+        // User logged out - cleanup shared account listeners
+        sharedListenersRef.current.forEach(unsub => unsub());
+        sharedListenersRef.current = [];
         localStorage.removeItem('uflow_last_view');
         lastSavedDataRef.current = '';
         if (saveTimeoutRef.current) {
@@ -290,7 +341,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           debts: DEMO_DEBTS,
           creditCards: DEMO_CREDIT_CARDS,
           goals: DEMO_GOALS,
-          planItems: DEMO_PLAN_ITEMS
+          planItems: DEMO_PLAN_ITEMS,
+          sharedAccounts: []
         }));
         setCurrentViewState('dashboard');
         isAuthCheckComplete.current = true;
@@ -622,6 +674,212 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }));
   }, []);
 
+  // --- Shared Account Actions ---
+
+  const generateInviteCode = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no O/0/1/I to avoid confusion
+    let code = '';
+    for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
+    return code;
+  };
+
+  const createSharedAccount = useCallback(async (name: string, currency: Currency) => {
+    if (!state.user) return;
+    const accountId = generateId();
+    const inviteCode = generateInviteCode();
+
+    const sharedAcc: SharedAccount = {
+      id: accountId,
+      name,
+      currency,
+      ownerId: state.user.uid,
+      inviteCode,
+      createdAt: new Date().toISOString(),
+      members: {
+        [state.user.uid]: {
+          displayName: state.user.displayName || state.user.email || 'User',
+          email: state.user.email || '',
+          joinedAt: new Date().toISOString(),
+          role: 'owner',
+        }
+      },
+      transactions: [],
+    };
+
+    // Save to Firestore
+    await setDoc(doc(db, 'sharedAccounts', accountId), sharedAcc);
+    await setDoc(doc(db, 'inviteCodes', inviteCode), {
+      accountId,
+      createdBy: state.user.uid,
+      createdAt: new Date().toISOString(),
+    });
+
+    // Add to local state + setup listener
+    setState(prev => ({ ...prev, sharedAccounts: [...prev.sharedAccounts, sharedAcc] }));
+    const unsub = onSnapshot(doc(db, 'sharedAccounts', accountId), (docSnap) => {
+      if (docSnap.exists()) {
+        const updated = { ...docSnap.data(), id: docSnap.id } as SharedAccount;
+        setState(prev => ({ ...prev, sharedAccounts: prev.sharedAccounts.map(sa => sa.id === updated.id ? updated : sa) }));
+      }
+    });
+    sharedListenersRef.current.push(unsub);
+
+    addToast(state.language === 'es' ? 'Cuenta compartida creada' : 'Shared account created', 'success');
+  }, [state.user, state.language, addToast]);
+
+  const joinSharedAccount = useCallback(async (code: string) => {
+    if (!state.user) return;
+    const trimmed = code.trim().toUpperCase();
+
+    // Look up invite code
+    const codeSnap = await getDoc(doc(db, 'inviteCodes', trimmed));
+    if (!codeSnap.exists()) {
+      addToast(state.language === 'es' ? 'Código inválido' : 'Invalid code', 'error');
+      return;
+    }
+
+    const { accountId } = codeSnap.data();
+    const accRef = doc(db, 'sharedAccounts', accountId);
+    const accSnap = await getDoc(accRef);
+    if (!accSnap.exists()) {
+      addToast(state.language === 'es' ? 'Cuenta no encontrada' : 'Account not found', 'error');
+      return;
+    }
+
+    const accData = accSnap.data() as SharedAccount;
+    if (accData.members[state.user.uid]) {
+      addToast(state.language === 'es' ? 'Ya eres miembro' : 'Already a member', 'info');
+      return;
+    }
+
+    // Add user as member
+    const memberData = {
+      displayName: state.user.displayName || state.user.email || 'User',
+      email: state.user.email || '',
+      joinedAt: new Date().toISOString(),
+      role: 'member' as const,
+    };
+
+    await updateDoc(accRef, { [`members.${state.user.uid}`]: memberData });
+
+    // Add to local state + setup listener
+    const fullAcc = { ...accData, id: accountId, members: { ...accData.members, [state.user.uid]: memberData } };
+    setState(prev => ({ ...prev, sharedAccounts: [...prev.sharedAccounts, fullAcc] }));
+
+    const unsub = onSnapshot(accRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const updated = { ...docSnap.data(), id: docSnap.id } as SharedAccount;
+        setState(prev => ({ ...prev, sharedAccounts: prev.sharedAccounts.map(sa => sa.id === updated.id ? updated : sa) }));
+      }
+    });
+    sharedListenersRef.current.push(unsub);
+
+    addToast(state.language === 'es' ? `Te uniste a "${accData.name}"` : `Joined "${accData.name}"`, 'success');
+  }, [state.user, state.language, addToast]);
+
+  const leaveSharedAccount = useCallback(async (accountId: string) => {
+    if (!state.user) return;
+    const accRef = doc(db, 'sharedAccounts', accountId);
+    const accSnap = await getDoc(accRef);
+    if (!accSnap.exists()) return;
+
+    const accData = accSnap.data() as SharedAccount;
+    const memberCount = Object.keys(accData.members).length;
+
+    if (memberCount <= 1) {
+      // Last member — delete the account + invite code
+      await deleteDoc(accRef);
+      try {
+        if (accData.inviteCode) await deleteDoc(doc(db, 'inviteCodes', accData.inviteCode));
+      } catch (e) {
+        console.warn('Failed to delete invite code on leave:', e);
+      }
+    } else {
+      // Remove user from members
+      const updatedMembers = { ...accData.members };
+      delete updatedMembers[state.user.uid];
+
+      // If owner leaves, transfer ownership to next member
+      const updates: any = { members: updatedMembers };
+      if (accData.ownerId === state.user.uid) {
+        const nextOwnerId = Object.keys(updatedMembers)[0];
+        updates.ownerId = nextOwnerId;
+        updatedMembers[nextOwnerId] = { ...updatedMembers[nextOwnerId], role: 'owner' };
+        updates.members = updatedMembers;
+      }
+      await updateDoc(accRef, updates);
+    }
+
+    setState(prev => ({ ...prev, sharedAccounts: prev.sharedAccounts.filter(sa => sa.id !== accountId) }));
+    addToast(state.language === 'es' ? 'Saliste de la cuenta' : 'Left shared account', 'info');
+  }, [state.user, state.language, addToast]);
+
+  const addSharedTransaction = useCallback(async (accountId: string, tx: Omit<SharedTransaction, 'id' | 'createdAt' | 'createdBy' | 'createdByName'>, overrides?: { createdBy: string; createdByName: string }) => {
+    if (!state.user) return;
+    const accRef = doc(db, 'sharedAccounts', accountId);
+    const accSnap = await getDoc(accRef);
+    if (!accSnap.exists()) return;
+
+    const accData = accSnap.data() as SharedAccount;
+    const newTx: SharedTransaction = {
+      ...tx,
+      id: generateId(),
+      createdAt: Date.now(),
+      createdBy: overrides?.createdBy || state.user.uid,
+      createdByName: overrides?.createdByName || state.user.displayName || state.user.email || 'User',
+    };
+
+    await updateDoc(accRef, { transactions: [newTx, ...(accData.transactions || [])] });
+    addToast(state.language === 'es' ? 'Registro guardado' : 'Record saved', 'success');
+  }, [state.user, state.language, addToast]);
+
+  const deleteSharedTransaction = useCallback(async (accountId: string, txId: string) => {
+    if (!state.user) return;
+    const accRef = doc(db, 'sharedAccounts', accountId);
+    const accSnap = await getDoc(accRef);
+    if (!accSnap.exists()) return;
+
+    const accData = accSnap.data() as SharedAccount;
+    const filtered = (accData.transactions || []).filter((t: any) => t.id !== txId);
+    await updateDoc(accRef, { transactions: filtered });
+    addToast(state.language === 'es' ? 'Registro eliminado' : 'Record deleted', 'info');
+  }, [state.user, state.language, addToast]);
+
+  const regenerateInviteCode = useCallback(async (accountId: string) => {
+    if (!state.user) return;
+    const accRef = doc(db, 'sharedAccounts', accountId);
+    const accSnap = await getDoc(accRef);
+    if (!accSnap.exists()) return;
+
+    const accData = accSnap.data() as SharedAccount;
+    // Only owner can regenerate
+    if (accData.ownerId !== state.user.uid) {
+      addToast(state.language === 'es' ? 'Solo el dueño puede hacer esto' : 'Only owner can do this', 'error');
+      return;
+    }
+
+    // Delete old code, create new one
+    const oldCode = accData.inviteCode;
+    const newCode = generateInviteCode();
+
+    try {
+      if (oldCode) {
+        await deleteDoc(doc(db, 'inviteCodes', oldCode));
+      }
+    } catch (e) {
+      console.warn('Failed to delete old invite code:', oldCode, e);
+    }
+
+    await updateDoc(accRef, { inviteCode: newCode });
+    await setDoc(doc(db, 'inviteCodes', newCode), {
+      accountId,
+      createdBy: state.user.uid,
+      createdAt: new Date().toISOString(),
+    });
+
+    addToast(state.language === 'es' ? 'Código regenerado' : 'Code regenerated', 'success');
+  }, [state.user, state.language, addToast]);
+
   const resetData = useCallback(async () => {
     // Reset data in Firebase to empty
     if (state.user?.uid) {
@@ -655,6 +913,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addAccount, deleteAccount, updateAccount, addDebt, deleteDebt,
     addCreditCard, updateCreditCard, deleteCreditCard, chargeCreditCard, payCreditCard, recalcCCBalances,
     addGoal, contributeToGoal, deleteGoal, addPlanItem, updatePlanItem, deletePlanItem, payDebt, resetData, t,
+    createSharedAccount, joinSharedAccount, leaveSharedAccount, addSharedTransaction, deleteSharedTransaction, regenerateInviteCode,
     addToast, removeToast, toasts
   };
 

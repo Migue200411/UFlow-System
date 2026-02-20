@@ -6,7 +6,7 @@ import { getFirestore } from "firebase/firestore";
 // Uses environment variables in production, with fallback values for development
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyC534ghdsT1UpidjoTdAnv2lXcVkQCXTAw",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "uflow-f98ce.firebaseapp.com",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "uflow-system.netlify.app",
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "uflow-f98ce",
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "uflow-f98ce.firebasestorage.app",
   messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "300510460590",

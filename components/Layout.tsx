@@ -703,11 +703,11 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
             {/* Create with AI Button */}
             <Button
                variant="primary"
-               className="hidden md:flex bg-gradient-to-r from-violet-600 to-fuchsia-600 border-none shadow-neon"
+               className="bg-gradient-to-r from-violet-600 to-fuchsia-600 border-none shadow-neon"
                onClick={() => setAiCreateOpen(true)}
             >
                <Sparkles className="w-3.5 h-3.5" />
-               <span className="hidden lg:inline">{t('act.create_ai')}</span>
+               <span className="hidden sm:inline">{t('act.create_ai')}</span>
             </Button>
 
             <Button variant="icon" onClick={togglePrivacy} title="Toggle Privacy">

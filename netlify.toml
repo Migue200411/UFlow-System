@@ -9,6 +9,12 @@
   targetPort = 5173
 
 [[redirects]]
+  from = "/__/auth/*"
+  to = "https://uflow-f98ce.firebaseapp.com/__/auth/:splat"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/api/*"
   to = "/.netlify/functions/:splat"
   status = 200
