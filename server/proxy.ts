@@ -333,7 +333,7 @@ Responde SOLO con el resumen, sin formato JSON.`,
 // Feedback endpoint — email is NEVER exposed to the client
 app.post('/api/feedback', async (req, res) => {
     try {
-        const { name, message, type } = req.body;
+        const { name, email, message, type } = req.body;
 
         if (!message || !message.trim()) {
             return res.status(400).json({ success: false, error: 'Message is required' });
@@ -364,6 +364,7 @@ app.post('/api/feedback', async (req, res) => {
         await transporter.sendMail({
             from: feedbackEmail,
             to: feedbackEmail,
+            replyTo: email || undefined,
             subject: `[UFlow] ${typeLabels[type] || type} — ${name || 'Anónimo'}`,
             html: `
                 <div style="font-family:system-ui,sans-serif;max-width:500px;margin:0 auto;padding:20px;">
@@ -371,6 +372,7 @@ app.post('/api/feedback', async (req, res) => {
                     <p style="color:#888;font-size:12px;margin-top:0;">Tipo: ${typeLabels[type] || type}</p>
                     <hr style="border:none;border-top:1px solid #eee;margin:16px 0;" />
                     <p><strong>De:</strong> ${name || 'Anónimo'}</p>
+                    ${email ? `<p><strong>Email:</strong> <a href="mailto:${email}">${email}</a></p>` : ''}
                     <p><strong>Mensaje:</strong></p>
                     <div style="background:#f9f9f9;border-radius:8px;padding:12px;white-space:pre-wrap;">${message}</div>
                     <hr style="border:none;border-top:1px solid #eee;margin:16px 0;" />

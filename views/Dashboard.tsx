@@ -10,6 +10,7 @@ export const DashboardView: React.FC = () => {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [fbType, setFbType] = useState<'comment' | 'bug' | 'request'>('comment');
   const [fbName, setFbName] = useState('');
+  const [fbEmail, setFbEmail] = useState('');
   const [fbMessage, setFbMessage] = useState('');
   const [fbSending, setFbSending] = useState(false);
 
@@ -20,13 +21,14 @@ export const DashboardView: React.FC = () => {
       const res = await fetch('http://localhost:3001/api/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: fbName, message: fbMessage, type: fbType }),
+        body: JSON.stringify({ name: fbName, email: fbEmail, message: fbMessage, type: fbType }),
       });
       const data = await res.json();
       if (data.success) {
         addToast(t('dash.feedback.success'), 'success');
         setFbMessage('');
         setFbName('');
+        setFbEmail('');
         setFbType('comment');
         setFeedbackOpen(false);
       } else {
@@ -454,6 +456,13 @@ export const DashboardView: React.FC = () => {
                 value={fbName}
                 onChange={e => setFbName(e.target.value)}
                 placeholder={language === 'es' ? 'Tu nombre (opcional)' : 'Your name (optional)'}
+                className="w-full h-8 text-xs px-3 rounded-lg bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 outline-none focus:border-brand-500 transition-colors"
+              />
+              <input
+                type="email"
+                value={fbEmail}
+                onChange={e => setFbEmail(e.target.value)}
+                placeholder={language === 'es' ? 'Tu correo (para respuesta)' : 'Your email (for reply)'}
                 className="w-full h-8 text-xs px-3 rounded-lg bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 outline-none focus:border-brand-500 transition-colors"
               />
               <textarea
