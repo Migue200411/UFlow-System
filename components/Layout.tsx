@@ -24,8 +24,20 @@ const NavItem = ({ icon: Icon, label, active, onClick }: any) => (
   </button>
 );
 
+const DEFAULT_CATEGORIES = ['Food', 'Rent', 'Transport', 'Salary', 'Business', 'Entertainment', 'Shopping', 'Utilities', 'Health', 'Education', 'Transfer', 'General'];
+
+const useCategoryOptions = () => {
+  const { transactions } = useApp();
+  const uniqueCategories = Array.from(new Set([
+    ...DEFAULT_CATEGORIES,
+    ...transactions.map(tx => tx.category).filter(Boolean)
+  ])).sort();
+  return uniqueCategories.map(c => ({ value: c, label: c }));
+};
+
 const QuickInputModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
   const { t, accounts, addTransaction, timezone } = useApp();
+  const categoryOptions = useCategoryOptions();
   const [formData, setFormData] = useState({
     type: 'expense' as TransactionType,
     amount: '',
@@ -112,17 +124,12 @@ const QuickInputModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => 
           options={accounts.map(acc => ({ value: acc.id, label: `${acc.name} (${acc.currency})` }))}
         />
 
-        <Input 
+        <Select
           label={t('lbl.category')}
-          list="categories"
           value={formData.category}
-          onChange={e => setFormData({...formData, category: e.target.value})}
-          placeholder="e.g. Food, Rent"
+          onChange={val => setFormData({...formData, category: val})}
+          options={categoryOptions}
         />
-        <datalist id="categories">
-          <option value="Food" /><option value="Rent" /><option value="Transport" />
-          <option value="Salary" /><option value="Business" /><option value="Entertainment" />
-        </datalist>
 
         <Input 
           label={t('lbl.desc')}
@@ -144,6 +151,7 @@ const QuickInputModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => 
 const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
   const { t, addTransaction, addGoal, accounts, creditCards, chargeCreditCard, payCreditCard, setView, addToast } = useApp();
   const context = useApp();
+  const categoryOptions = useCategoryOptions();
   const [prompt, setPrompt] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   
@@ -300,10 +308,11 @@ const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () =
                     onChange={v => setDraftTx({...draftTx, accountId: v})}
                     options={accounts.map(acc => ({ value: acc.id, label: acc.name }))}
                  />
-                 <Input
+                 <Select
                     label="Category"
                     value={draftTx.category}
-                    onChange={e => setDraftTx({...draftTx, category: e.target.value})}
+                    onChange={v => setDraftTx({...draftTx, category: v})}
+                    options={categoryOptions}
                  />
                  {draftTx.creditCardId && (() => {
                    const card = creditCards.find((c: any) => c.id === draftTx.creditCardId);
@@ -357,6 +366,7 @@ const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () =
 // --- EDIT TRANSACTION MODAL (72h Window) ---
 const EditTransactionModal = () => {
   const { t, accounts, editingTransaction, setEditingTransaction, updateTransaction, deleteTransaction } = useApp();
+  const categoryOptions = useCategoryOptions();
   const [formData, setFormData] = useState({
     type: 'expense' as TransactionType,
     amount: '',
@@ -474,17 +484,12 @@ const EditTransactionModal = () => {
           options={accounts.map(acc => ({ value: acc.id, label: `${acc.name} (${acc.currency})` }))}
         />
 
-        <Input
+        <Select
           label={t('lbl.category')}
-          list="edit-categories"
           value={formData.category}
-          onChange={e => setFormData({...formData, category: e.target.value})}
-          placeholder="e.g. Food, Rent"
+          onChange={val => setFormData({...formData, category: val})}
+          options={categoryOptions}
         />
-        <datalist id="edit-categories">
-          <option value="Food" /><option value="Rent" /><option value="Transport" />
-          <option value="Salary" /><option value="Business" /><option value="Entertainment" />
-        </datalist>
 
         <Input
           label={t('lbl.desc')}

@@ -32,7 +32,7 @@ function getDateInfo() {
     };
 }
 
-const buildSystemPrompt = (dateInfo: ReturnType<typeof getDateInfo>) => `Eres un parser de transacciones financieras. Tu ÚNICA tarea es extraer datos estructurados del mensaje del usuario.
+const buildSystemPrompt = (dateInfo: ReturnType<typeof getDateInfo>, existingCategories?: string[]) => `Eres un parser de transacciones financieras. Tu ÚNICA tarea es extraer datos estructurados del mensaje del usuario.
 
 ## FECHA DE REFERENCIA
 Hoy es: ${dateInfo.today} (${dateInfo.dayName})
@@ -60,12 +60,19 @@ EJEMPLOS:
 - "100mil" = 100 × 1,000 = 100000
 
 ## CATEGORÍAS
-- "ropa", "camisa", "zapatos" → Shopping
-- "comida", "almuerzo", "sushi" → Food
-- "uber", "taxi", "bus" → Transport
-- "arriendo" → Rent
-- "netflix", "spotify", "internet" → Utilities
-- "salario", "nómina" → Salary
+CATEGORÍAS EXISTENTES DEL USUARIO (PRIORIZA ESTAS):
+${existingCategories?.length ? existingCategories.join(', ') : 'Food, Rent, Transport, Salary, Business, Entertainment'}
+
+REGLAS DE CATEGORIZACIÓN:
+- SIEMPRE usa una categoría de la lista existente si aplica
+- Solo crea una categoría nueva si ninguna existente encaja
+- Mapeo de palabras clave:
+  - "ropa", "camisa", "zapatos" → Shopping
+  - "comida", "almuerzo", "sushi" → Food
+  - "uber", "taxi", "bus" → Transport
+  - "arriendo" → Rent
+  - "netflix", "spotify", "internet" → Utilities
+  - "salario", "nómina" → Salary
 
 ## RESPUESTA (SOLO JSON)
 {
@@ -104,7 +111,8 @@ export default async (request: Request) => {
     try {
         const { prompt, context } = await request.json();
         const dateInfo = getDateInfo();
-        const systemPrompt = buildSystemPrompt(dateInfo);
+        const existingCategories = context?.existingCategories || [];
+        const systemPrompt = buildSystemPrompt(dateInfo, existingCategories);
 
         const anthropic = new Anthropic({
             apiKey: process.env.ANTHROPIC_API_KEY,

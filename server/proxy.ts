@@ -3,8 +3,13 @@ import cors from 'cors';
 import Anthropic from '@anthropic-ai/sdk';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 
 const app = express();
 app.use(cors());
@@ -86,8 +91,13 @@ Si el usuario dice que PAGÓ la tarjeta (ej. "pagué 500k de la Nu", "abono a la
 - category: "Card Payment"
 - accountId: cuenta bancaria desde donde paga (si la menciona, si no, la primera)
 
-## CATEGORÍAS — INFERIR DEL CONTEXTO
-Mapeo de palabras clave a categorías:
+## CATEGORÍAS DEL USUARIO
+CATEGORÍAS EXISTENTES (PRIORIZA ESTAS):
+${context?.existingCategories?.length ? context.existingCategories.join(', ') : 'Food, Rent, Transport, Salary, Business, Entertainment, Shopping, Utilities, Health, Education, Savings'}
+
+REGLAS: SIEMPRE usa una categoría existente si aplica. Solo crea una nueva si ninguna encaja.
+
+Mapeo de palabras clave:
 - Transport: uber, taxi, bus, pasajes, gasolina, peajes, parqueadero, transmilenio, didi, metro
 - Food: almuerzo, cena, desayuno, restaurante, comida, mercado, supermercado, rappi, domicilio
 - Shopping: ropa, zapatos, tienda, amazon, compra online, accesorios, electrodomésticos
@@ -175,8 +185,11 @@ ${context?.creditCards?.length ? context.creditCards.map((c: any) => `- id: "${c
 Si el usuario gasta con tarjeta de crédito → creditCardId + creditCardAction: "charge"
 Si el usuario paga su tarjeta → creditCardId + creditCardAction: "pay", category: "Card Payment"
 
-## CATEGORÍAS DISPONIBLES
-Shopping, Food, Transport, Rent, Utilities, Entertainment, Salary, Health, Education, Business, Savings
+## CATEGORÍAS DEL USUARIO
+CATEGORÍAS EXISTENTES (PRIORIZA ESTAS):
+${context?.existingCategories?.length ? context.existingCategories.join(', ') : 'Shopping, Food, Transport, Rent, Utilities, Entertainment, Salary, Health, Education, Business, Savings'}
+
+REGLAS: SIEMPRE usa una categoría existente si aplica. Solo crea una nueva si ninguna encaja.
 
 ## FORMATO DE RESPUESTA
 Responde SIEMPRE con JSON válido:

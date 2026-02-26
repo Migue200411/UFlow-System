@@ -80,6 +80,7 @@ export const callClaudeAPI = async (
                     transactions: context.transactions.slice(-10),
                     accounts: context.accounts,
                     creditCards: context.creditCards,
+                    existingCategories: Array.from(new Set(context.transactions.map(tx => tx.category).filter(Boolean))),
                 },
                 dateInfo,
                 messages,
