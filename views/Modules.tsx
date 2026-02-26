@@ -313,6 +313,7 @@ export const AnalyticsView = () => {
       .filter(tx => {
         if (tx.type !== 'expense') return false;
         if (!tx.accountId) return false;
+        if (tx.category === 'Transfer') return false;
         const p = parseDateParts(tx.date);
         return p.month === selectedMonth.month && p.year === selectedMonth.year;
       })
