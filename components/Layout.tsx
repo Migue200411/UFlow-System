@@ -280,15 +280,19 @@ const CreateWithAIModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () =
     for (const draft of drafts) {
       if (resultType === 'transaction') {
         const amount = typeof draft.amount === 'string' ? parseFloat(draft.amount) : draft.amount;
+        const ccAction = draft.creditCardAction || (draft.creditCardId ? 'charge' : undefined);
+        const category = ccAction === 'pay' ? 'Card Payment' : (draft.category || 'General');
         addTransaction({
           ...draft,
           date: dateToISO(draft.date),
           amount,
+          category,
           creditCardId: draft.creditCardId || undefined,
+          creditCardAction: ccAction,
         });
-        if (draft.creditCardId && draft.creditCardAction) {
-          if (draft.creditCardAction === 'charge') chargeCreditCard(draft.creditCardId, amount);
-          else if (draft.creditCardAction === 'pay') payCreditCard(draft.creditCardId, amount);
+        if (draft.creditCardId && ccAction) {
+          if (ccAction === 'charge') chargeCreditCard(draft.creditCardId, amount);
+          else if (ccAction === 'pay') payCreditCard(draft.creditCardId, amount);
         }
         targetView = 'history';
       } else if (resultType === 'goal') {

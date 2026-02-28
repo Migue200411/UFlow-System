@@ -1,5 +1,16 @@
 import { FX_RATES } from './constants';
-import { Currency, Language, AppContextType, TransactionType } from './types';
+import { Currency, Language, AppContextType, TransactionType, Transaction } from './types';
+
+/** Determine if a credit-card-linked transaction is a PAYMENT (reduces balance).
+ *  Checks explicit field first, then falls back to category/note heuristics for old data. */
+export const isCCPayment = (tx: Pick<Transaction, 'category' | 'note' | 'creditCardAction'>): boolean => {
+  if (tx.creditCardAction === 'pay') return true;
+  if (tx.creditCardAction === 'charge') return false;
+  // Fallback for legacy data without creditCardAction
+  if (tx.category === 'Card Payment') return true;
+  const lower = (tx.category + ' ' + (tx.note || '')).toLowerCase();
+  return lower.includes('pago tarjeta') || lower.includes('card payment');
+};
 
 // --- CURRENCY HELPERS ---
 

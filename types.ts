@@ -43,6 +43,7 @@ export interface Transaction {
   date: string; // ISO String
   createdAt: number; // Timestamp for 72h rule
   creditCardId?: string; // Links transaction to a credit card
+  creditCardAction?: 'charge' | 'pay'; // Explicit: avoids relying on category string
 }
 
 export interface DebtPayment {

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { Card, Button, Input, Select, Badge, Money, Toggle, SegmentedControl, Modal, DatePicker } from '../components/UIComponents';
-import { convertToBase, cn, processAICommand, generateId, getTodayStr, dateToISO } from '../utils';
+import { convertToBase, cn, processAICommand, generateId, getTodayStr, dateToISO, isCCPayment } from '../utils';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid, BarChart, Bar } from 'recharts';
 import { Moon, Sun, Monitor, Globe, Shield, CreditCard as CreditCardIcon, LogOut, User, Activity, TrendingUp, PieChart as PieIcon, Send, Sparkles, Bot, Wallet, Settings, Trash2, Plus, Pencil, ChevronDown, Check, Target, Copy, RefreshCw, Users, ArrowLeft, UserPlus, Crown, Eye, EyeOff } from 'lucide-react';
 import { AIMessage, CreditCard as CreditCardType, SharedAccount, SharedAccountMember, SharedTransaction, Currency } from '../types';
@@ -391,7 +391,7 @@ export const AnalyticsView = () => {
       const day = parseDateParts(tx.date).day;
       if (!byDay[day]) byDay[day] = { charges: 0, payments: 0 };
       const val = convertToBase(tx.amount, tx.currency, currencyBase);
-      if (tx.category === 'Card Payment') {
+      if (isCCPayment(tx)) {
         byDay[day].payments += val;
       } else {
         byDay[day].charges += val;
@@ -2144,7 +2144,7 @@ export const DebtsView = () => {
                 const cardTxs = transactions.filter(tx => tx.creditCardId === card.id);
                 let realUsed = 0;
                 for (const tx of cardTxs) {
-                  if (tx.category === 'Card Payment') realUsed -= tx.amount;
+                  if (isCCPayment(tx)) realUsed -= tx.amount;
                   else realUsed += tx.amount;
                 }
                 realUsed = Math.max(0, Math.min(realUsed, card.creditLimit));
@@ -2336,6 +2336,7 @@ export const DebtsView = () => {
                         note: `${editCard.name}`,
                         date: dateToISO(cardChargeDate || getTodayStr(timezone)),
                         creditCardId: editCard.id,
+                        creditCardAction: 'charge',
                       });
                       setEditCard({ ...editCard, usedAmount: Math.min(editCard.usedAmount + amt, editCard.creditLimit) });
                       setCardChargeAmount('');
@@ -2397,6 +2398,7 @@ export const DebtsView = () => {
                         note: `${editCard.name}`,
                         date: dateToISO(cardPayDate || getTodayStr(timezone)),
                         creditCardId: editCard.id,
+                        creditCardAction: 'pay',
                       });
                       setEditCard({ ...editCard, usedAmount: Math.max(editCard.usedAmount - amt, 0) });
                       setCardPayAmount('');
@@ -2422,18 +2424,21 @@ export const DebtsView = () => {
                         <p className="text-xs text-zinc-400 italic py-2">{t('cc.no_history')}</p>
                       ) : (
                         <div className="max-h-40 overflow-y-auto space-y-1 custom-scrollbar">
-                          {cardTxs.map(tx => (
+                          {cardTxs.map(tx => {
+                            const isPay = isCCPayment(tx);
+                            return (
                             <div key={tx.id} className="flex items-center justify-between py-2 px-3 rounded-lg bg-zinc-50 dark:bg-white/5 text-xs">
                               <div className="flex items-center gap-2 min-w-0">
-                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${tx.category === 'Card Payment' ? 'bg-green-500' : 'bg-red-500'}`} />
-                                <span className="text-zinc-600 dark:text-zinc-300 truncate">{tx.category === 'Card Payment' ? (language === 'es' ? 'Pago' : 'Payment') : tx.note || tx.category}</span>
-                                <span className="text-zinc-400 shrink-0">{new Date(tx.date).toLocaleDateString(undefined, { timeZone: 'UTC', month: 'short', day: 'numeric' })}</span>
+                                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isPay ? 'bg-green-500' : 'bg-red-500'}`} />
+                                <span className="text-zinc-600 dark:text-zinc-300 truncate">{isPay ? (language === 'es' ? 'Pago' : 'Payment') : tx.note || tx.category}</span>
+                                <span className="text-zinc-400 shrink-0">{new Date(tx.date).toLocaleDateString(language === 'es' ? 'es' : 'en', { timeZone: 'UTC', month: 'short', day: 'numeric' })}</span>
                               </div>
-                              <span className={`font-mono font-bold shrink-0 ml-2 ${tx.category === 'Card Payment' ? 'text-green-600 dark:text-green-400' : 'text-zinc-900 dark:text-white'}`}>
-                                {tx.category === 'Card Payment' ? '-' : '+'}<Money amount={tx.amount} currency={tx.currency} />
+                              <span className={`font-mono font-bold shrink-0 ml-2 ${isPay ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                                {isPay ? '-' : '+'}<Money amount={tx.amount} currency={tx.currency} />
                               </span>
                             </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -2842,15 +2847,20 @@ export const AIAssistantView = () => {
       for (const data of items) {
         if (sType === 'transaction') {
           const amount = typeof data.amount === 'string' ? parseFloat(data.amount) : data.amount;
+          // Determine credit card action and force correct category
+          const ccAction = data.creditCardAction || (data.creditCardId ? 'charge' : undefined);
+          const category = ccAction === 'pay' ? 'Card Payment' : (data.category || 'General');
           addTransaction({
             ...data,
             amount,
-            date: data.date?.includes('T') ? data.date : (data.date + 'T12:00:00.000Z'),
+            category,
+            date: data.date?.includes('T') ? data.date : ((data.date || new Date().toISOString().split('T')[0]) + 'T12:00:00.000Z'),
             creditCardId: data.creditCardId || undefined,
+            creditCardAction: ccAction,
           });
-          if (data.creditCardId && data.creditCardAction) {
-            if (data.creditCardAction === 'charge') chargeCreditCard(data.creditCardId, amount);
-            else if (data.creditCardAction === 'pay') payCreditCard(data.creditCardId, amount);
+          if (data.creditCardId && ccAction) {
+            if (ccAction === 'charge') chargeCreditCard(data.creditCardId, amount);
+            else if (ccAction === 'pay') payCreditCard(data.creditCardId, amount);
           }
         } else if (sType === 'goal') {
           addGoal({

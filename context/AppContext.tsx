@@ -5,7 +5,7 @@ import {
   SharedAccount, SharedTransaction
 } from '../types';
 import { DEMO_ACCOUNTS, DEMO_PLAN_ITEMS, DEMO_CREDIT_CARDS, DEMO_DEBTS, DEMO_GOALS, DEMO_TRANSACTIONS, TRANSLATIONS } from '../constants';
-import { generateId, getTodayStr, dateToISO } from '../utils';
+import { generateId, getTodayStr, dateToISO, isCCPayment } from '../utils';
 import { auth, db, googleProvider } from '../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, signOut, onAuthStateChanged, updateProfile, User } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, deleteDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
@@ -149,7 +149,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const cardTxs = txs.filter((tx: any) => tx.creditCardId === card.id);
           let used = 0;
           for (const tx of cardTxs) {
-            if (tx.category === 'Card Payment') used -= tx.amount;
+            if (isCCPayment(tx)) used -= tx.amount;
             else used += tx.amount;
           }
           return { ...card, usedAmount: Math.max(0, Math.min(used, card.creditLimit)) };
@@ -429,7 +429,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // If this is a CC transaction and amount changed, adjust usedAmount
       if (tx.creditCardId && data.amount !== undefined && data.amount !== tx.amount) {
         const diff = data.amount - tx.amount;
-        const isCharge = tx.category !== 'Card Payment';
+        const isCharge = !isCCPayment(tx);
         creditCards = creditCards.map(c => {
           if (c.id !== tx.creditCardId) return c;
           // Charge: more amount = more used; Payment: more amount = less used
@@ -457,7 +457,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let creditCards = prev.creditCards;
       // If deleting a CC transaction, reverse its effect on usedAmount
       if (tx.creditCardId) {
-        const isCharge = tx.category !== 'Card Payment';
+        const isCharge = !isCCPayment(tx);
         creditCards = creditCards.map(c => {
           if (c.id !== tx.creditCardId) return c;
           // Reverse: delete charge = reduce used; delete payment = increase used
@@ -669,7 +669,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const cardTxs = prev.transactions.filter(tx => tx.creditCardId === card.id);
         let used = 0;
         for (const tx of cardTxs) {
-          if (tx.category === 'Card Payment') {
+          if (isCCPayment(tx)) {
             used -= tx.amount;
           } else {
             used += tx.amount;
