@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import { Card, Button, Input, Select, Badge, Money, Toggle, SegmentedControl, Modal, DatePicker } from '../components/UIComponents';
 import { convertToBase, cn, processAICommand, generateId, getTodayStr, dateToISO, isCCPayment } from '../utils';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid, BarChart, Bar } from 'recharts';
-import { Moon, Sun, Monitor, Globe, Shield, CreditCard as CreditCardIcon, LogOut, User, Activity, TrendingUp, PieChart as PieIcon, Send, Sparkles, Bot, Wallet, Settings, Trash2, Plus, Pencil, ChevronDown, Check, Target, Copy, RefreshCw, Users, ArrowLeft, UserPlus, Crown, Eye, EyeOff } from 'lucide-react';
+import { Moon, Sun, Monitor, Globe, Shield, CreditCard as CreditCardIcon, LogOut, User, Activity, TrendingUp, PieChart as PieIcon, Send, Sparkles, Bot, Wallet, Settings, Trash2, Plus, Pencil, ChevronDown, Check, Target, Copy, RefreshCw, Users, ArrowLeft, UserPlus, Crown, Eye, EyeOff, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
 import { AIMessage, CreditCard as CreditCardType, SharedAccount, SharedAccountMember, SharedTransaction, Currency } from '../types';
 
 // --- HISTORY VIEW ---
@@ -57,8 +57,8 @@ export const HistoryView = () => {
   return (
     <div className="space-y-6 animate-in fade-in duration-700">
       {/* Filters */}
-      <div className="flex flex-wrap gap-4 items-end p-4 rounded-2xl glass-panel">
-        <div className="flex-1 min-w-[200px]">
+      <div className="flex flex-wrap gap-2 sm:gap-4 items-end p-2.5 sm:p-4 rounded-2xl glass-panel">
+        <div className="w-full sm:flex-1 sm:w-auto sm:min-w-[200px]">
           <label className="text-[10px] uppercase font-bold text-zinc-500 mb-1 block">
             {language === 'es' ? 'Buscar' : 'Search'}
           </label>
@@ -67,17 +67,17 @@ export const HistoryView = () => {
             placeholder={language === 'es' ? 'Buscar por categoría o nota...' : 'Search by category or note...'}
             value={filter}
             onChange={e => setFilter(e.target.value)}
-            className="w-full px-4 py-2 rounded-xl bg-white/50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30"
+            className="w-full px-3 sm:px-4 py-2 rounded-xl bg-white/50 dark:bg-white/5 border border-zinc-200 dark:border-white/10 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500/30"
           />
         </div>
-        <div className="w-44">
+        <div className="w-[calc(50%-4px)] sm:w-44">
           <DatePicker
             label={language === 'es' ? 'Desde' : 'From'}
             value={dateFrom}
             onChange={setDateFrom}
           />
         </div>
-        <div className="w-44">
+        <div className="w-[calc(50%-4px)] sm:w-44">
           <DatePicker
             label={language === 'es' ? 'Hasta' : 'To'}
             value={dateTo}
@@ -99,7 +99,49 @@ export const HistoryView = () => {
         )}
       </div>
 
-      <Card className="overflow-hidden p-0 border-0 shadow-glass-sm">
+      {/* Mobile card layout */}
+      <div className="sm:hidden space-y-1.5">
+        {paginatedTx.length === 0 ? (
+          <div className="py-12 text-center text-zinc-400 text-sm">{language === 'es' ? 'No hay registros' : 'No records found'}</div>
+        ) : paginatedTx.map(tx => {
+          const isShared = tx._shared;
+          const isEditable = !isShared && (Date.now() - tx.createdAt) < (72 * 60 * 60 * 1000);
+          const acctName = isShared ? tx._accountName : accounts.find(a => a.id === (tx as any).accountId)?.name || tx.currency;
+          return (
+            <div key={tx.id + (isShared ? '-s' : '')} className="py-2 px-3 flex items-center justify-between bg-white/50 dark:bg-white/5 hover:bg-white dark:hover:bg-white/10 rounded-xl transition-all group border border-transparent hover:border-zinc-200 dark:hover:border-white/10" onClick={() => isEditable ? setEditingTransaction(tx as any) : undefined}>
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className={`w-7 h-7 rounded-full flex items-center justify-center border shadow-sm shrink-0 ${tx.type === 'income' ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-zinc-100 dark:bg-white/5 border-zinc-200 dark:border-white/10 text-zinc-400'}`}>
+                  {tx.type === 'income' ? <ArrowDownLeft className="w-3.5 h-3.5" /> : <ArrowUpRight className="w-3.5 h-3.5" />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 safe-text">
+                    {tx.category}
+                    {isShared && 'isShared' in tx && tx.isShared && <Badge variant="brand" className="ml-1.5 text-[8px] !py-0 !px-1">{language === 'es' ? 'compartido' : 'shared'}</Badge>}
+                  </p>
+                  <p className="text-[10px] text-zinc-500 safe-text font-mono flex items-center gap-1.5 flex-wrap">
+                    <span className="px-1 py-0.5 rounded bg-brand-500/10 text-brand-600 dark:text-brand-400 font-bold tracking-wide">{acctName}</span>
+                    <span className="w-1 h-1 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+                    {(() => { const d = new Date(tx.date); return d.toLocaleDateString(language === 'es' ? 'es' : 'en', { day: 'numeric', month: 'short', timeZone: 'UTC' }); })()}
+                    {tx.note && <>
+                      <span className="w-1 h-1 rounded-full bg-zinc-300 dark:bg-zinc-600" />
+                      <span className="opacity-70">{tx.note}</span>
+                    </>}
+                  </p>
+                </div>
+              </div>
+              <div className="text-right pl-2 shrink-0">
+                <p className={`text-xs font-mono font-bold tracking-tight whitespace-nowrap ${tx.type === 'income' ? 'text-green-600 dark:text-green-400' : 'text-zinc-900 dark:text-white'}`}>
+                  {tx.type === 'expense' ? '-' : '+'}<Money amount={tx.amount} currency={tx.currency} />
+                </p>
+                {isEditable && <span className="text-[8px] font-bold text-brand-500 uppercase tracking-wide">EDIT 72H</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Desktop table layout */}
+      <Card className="overflow-hidden p-0 border-0 shadow-glass-sm hidden sm:block">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-left">
             <thead className="bg-zinc-100/50 dark:bg-white/5 border-b border-zinc-200 dark:border-white/10 backdrop-blur-md">
@@ -501,8 +543,8 @@ export const AnalyticsView = () => {
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
 
       {/* Month/Year Selector */}
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-zinc-900 dark:text-white">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <h2 className="text-xl sm:text-2xl font-bold text-zinc-900 dark:text-white">
           {language === 'es' ? 'Análisis Financiero' : 'Financial Analytics'}
         </h2>
         <div className="flex items-center gap-2">
@@ -878,8 +920,8 @@ export const PlannerView = () => {
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-8 duration-700">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-zinc-900 dark:text-white">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <h2 className="text-xl sm:text-2xl font-bold text-zinc-900 dark:text-white">
           {language === 'es' ? 'Planificación Mensual' : 'Monthly Planner'}
         </h2>
         <div className="flex items-center gap-2">
@@ -1474,12 +1516,12 @@ export const AccountsView = () => {
   // --- Main Accounts List View ---
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
-      <div className="flex flex-wrap justify-between items-center gap-3">
-        <h2 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">{t('nav.accounts')}</h2>
-        <div className="flex gap-2">
+      <div className="flex flex-wrap justify-between items-center gap-2 sm:gap-3">
+        <h2 className="text-lg sm:text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">{t('nav.accounts')}</h2>
+        <div className="flex gap-1.5 sm:gap-2">
           {!showJoinInput ? (
-            <Button variant="secondary" onClick={() => setShowJoinInput(true)}>
-              <UserPlus className="w-4 h-4" />
+            <Button variant="secondary" onClick={() => setShowJoinInput(true)} className="!text-[11px] sm:!text-sm !px-2 sm:!px-4 !h-8 sm:!h-9 whitespace-nowrap">
+              <UserPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               {t('shared.join')}
             </Button>
           ) : (
@@ -1497,8 +1539,8 @@ export const AccountsView = () => {
               <button onClick={() => { setShowJoinInput(false); setJoinCode(''); }} className="text-zinc-400 hover:text-zinc-600 p-1">✕</button>
             </div>
           )}
-          <Button onClick={() => setIsModalOpen(true)}>
-            <Plus className="w-4 h-4" />
+          <Button onClick={() => setIsModalOpen(true)} className="!text-[11px] sm:!text-sm !px-2 sm:!px-4 !h-8 sm:!h-9 whitespace-nowrap">
+            <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             {language === 'es' ? 'Nueva Cuenta' : 'Add Account'}
           </Button>
         </div>
@@ -1932,9 +1974,9 @@ export const DebtsView = () => {
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-700">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">{t('nav.debts')}</h2>
-        <Button onClick={() => setIsModalOpen(true)} variant="danger" className="bg-red-500/10 text-red-600 border border-red-500/20 hover:bg-red-500/20">
-          <Shield className="w-4 h-4" />
+        <h2 className="text-lg sm:text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">{t('nav.debts')}</h2>
+        <Button onClick={() => setIsModalOpen(true)} variant="danger" className="!text-[11px] sm:!text-sm !px-2 sm:!px-4 !h-8 sm:!h-9 whitespace-nowrap">
+          <Shield className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           {language === 'es' ? 'Registrar Deuda' : 'Log Debt'}
         </Button>
       </div>
@@ -2118,13 +2160,14 @@ export const DebtsView = () => {
 
       {/* ========== CREDIT CARDS SECTION ========== */}
       <div className="flex justify-between items-center mt-12">
-        <h2 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight flex items-center gap-3">
-          <CreditCardIcon className="w-6 h-6 text-brand-500" />
+        <h2 className="text-lg sm:text-2xl font-bold text-zinc-900 dark:text-white tracking-tight flex items-center gap-2 sm:gap-3">
+          <CreditCardIcon className="w-4 h-4 sm:w-6 sm:h-6 text-brand-500" />
           {t('cc.title')}
         </h2>
-        <Button onClick={() => setIsCardModalOpen(true)} className="bg-brand-500/10 text-brand-600 border border-brand-500/20 hover:bg-brand-500/20">
-          <Plus className="w-4 h-4" />
-          {t('cc.add')}
+        <Button onClick={() => setIsCardModalOpen(true)} className="!text-[11px] sm:!text-sm !px-2 sm:!px-4 !h-8 sm:!h-9 whitespace-nowrap bg-brand-500/10 text-brand-600 border border-brand-500/20 hover:bg-brand-500/20">
+          <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          <span className="sm:hidden">{language === 'es' ? 'Agregar' : 'Add'}</span>
+          <span className="hidden sm:inline">{t('cc.add')}</span>
         </Button>
       </div>
 
