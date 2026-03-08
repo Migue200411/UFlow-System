@@ -12,6 +12,7 @@ export interface UserProfile {
   uid: string;
   email: string | null;
   displayName: string | null;
+  authProvider?: string;
   theme: Theme;
   language: Language;
   currencyBase: Currency;

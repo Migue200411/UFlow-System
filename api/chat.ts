@@ -205,12 +205,18 @@ Si es un solo item, usa "data" como siempre.
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+    const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173').split(',');
+    const origin = req.headers.origin || '';
+    const corsOrigin = allowedOrigins.includes(origin) ? origin : allowedOrigins[0];
+
     if (req.method === 'OPTIONS') {
-        res.setHeader('Access-Control-Allow-Origin', '*');
+        res.setHeader('Access-Control-Allow-Origin', corsOrigin);
         res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
         res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
         return res.status(200).end();
     }
+
+    res.setHeader('Access-Control-Allow-Origin', corsOrigin);
 
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });

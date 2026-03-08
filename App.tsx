@@ -1,8 +1,10 @@
-import React, { Component, ReactNode } from 'react';
+import React, { Component, ReactNode, useState, useEffect, useCallback } from 'react';
 import { Layout } from './components/Layout';
 import { useApp } from './context/AppContext';
 import { DashboardView } from './views/Dashboard';
 import { AuthView } from './views/AuthView';
+import { AuthActionPage } from './views/AuthActionPage';
+import { LandingPage } from './views/LandingPage';
 import { HistoryView, AnalyticsView, PlannerView, SettingsView, AccountsView, GoalsView, DebtsView, AIAssistantView } from './views/Modules';
 import { Loader2 } from 'lucide-react';
 import { ToastContainer } from './components/UIComponents';
@@ -52,8 +54,46 @@ const ViewRouter: React.FC = () => {
   }
 };
 
+/* ── Simple path-based routing (no library needed) ── */
+const useRoute = () => {
+  const [path, setPath] = useState(window.location.pathname);
+
+  useEffect(() => {
+    const onPop = () => setPath(window.location.pathname);
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, []);
+
+  const navigate = useCallback((to: string) => {
+    window.history.pushState(null, '', to);
+    setPath(to);
+    window.scrollTo(0, 0);
+  }, []);
+
+  return { path, navigate };
+};
+
 const App: React.FC = () => {
   const { user, isLoading, toasts, removeToast } = useApp();
+  const { path, navigate } = useRoute();
+
+  // If user is authenticated, always show the app regardless of URL
+  // If user lands on /login but is logged in, redirect to /
+  useEffect(() => {
+    if (user && path === '/login') {
+      navigate('/');
+    }
+  }, [user, path, navigate]);
+
+  // Auth action page (password reset, email verify) — always accessible
+  if (path === '/auth/action') {
+    return (
+      <ErrorBoundary>
+        <AuthActionPage />
+        <ToastContainer toasts={toasts} removeToast={removeToast} />
+      </ErrorBoundary>
+    );
+  }
 
   // 1. Initial Loading State (Waiting for Firebase)
   if (isLoading) {
@@ -71,7 +111,7 @@ const App: React.FC = () => {
                Initializing Protocol
              </div>
          </div>
-         
+
          {/* Background Glow */}
          <div className="fixed inset-0 pointer-events-none overflow-hidden">
             <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-brand-500/5 rounded-full blur-[100px]" />
@@ -82,12 +122,16 @@ const App: React.FC = () => {
 
   return (
     <ErrorBoundary>
-       {/* 2. Auth Gate: If no user, show AuthView */}
+       {/* 2. Auth Gate */}
        {!user ? (
-         <>
-           <AuthView />
-           <ToastContainer toasts={toasts} removeToast={removeToast} />
-         </>
+         path === '/login' ? (
+           <>
+             <AuthView />
+             <ToastContainer toasts={toasts} removeToast={removeToast} />
+           </>
+         ) : (
+           <LandingPage onGoToApp={() => navigate('/login')} />
+         )
        ) : (
          /* 3. Authenticated: Show AppShell */
          <Layout>

@@ -7,7 +7,7 @@ import {
 import { DEMO_ACCOUNTS, DEMO_PLAN_ITEMS, DEMO_CREDIT_CARDS, DEMO_DEBTS, DEMO_GOALS, DEMO_TRANSACTIONS, TRANSLATIONS } from '../constants';
 import { generateId, getTodayStr, dateToISO, isCCPayment } from '../utils';
 import { auth, db, googleProvider } from '../firebase';
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, signOut, onAuthStateChanged, updateProfile, User } from 'firebase/auth';
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, signOut, onAuthStateChanged, updateProfile, sendPasswordResetEmail, User } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, deleteDoc, onSnapshot, Unsubscribe } from 'firebase/firestore';
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -244,6 +244,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (userSnap.exists()) {
         const profile = userSnap.data() as UserProfile;
+        // Backfill authProvider for existing users
+        if (!profile.authProvider) {
+          const provider = baseUser.providerData?.[0]?.providerId || 'password';
+          profile.authProvider = provider;
+          updateDoc(userRef, { authProvider: provider }).catch(() => {});
+        }
         setState(prev => ({
           ...prev,
           user: profile,
@@ -260,6 +266,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           uid: uid,
           email: baseUser.email,
           displayName: baseUser.displayName,
+          authProvider: baseUser.providerData?.[0]?.providerId || 'password',
           theme: 'light',
           language: 'en',
           currencyBase: 'COP',
@@ -401,6 +408,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const logout = async () => {
     await signOut(auth);
     addToast("Session Ended", "info");
+  };
+
+  const resetPassword = async (email: string) => {
+    const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const apiBase = isDev ? 'http://localhost:3001' : '';
+    const res = await fetch(`${apiBase}/api/check-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    if (!res.ok) {
+      throw new Error(state.language === 'es' ? 'Error al verificar el email. Intenta de nuevo.' : 'Error verifying email. Try again.');
+    }
+    const data = await res.json();
+    if (!data.exists) {
+      throw new Error(state.language === 'es' ? 'No existe una cuenta con ese email.' : 'No account found with that email.');
+    }
+    if (data.isGoogle && !data.isPassword) {
+      throw new Error(state.language === 'es' ? 'Esta cuenta fue registrada con Google. Gestiona tu contraseña desde tu cuenta de Google.' : 'This account was registered with Google. Manage your password from your Google account.');
+    }
+    await sendPasswordResetEmail(auth, email);
+    addToast(state.language === 'es' ? 'Email de recuperacion enviado. Revisa tu bandeja de entrada y spam.' : 'Recovery email sent. Check your inbox and spam.', 'success');
   };
 
   // --- CRUD Actions (Immutable Updates) ---
@@ -905,7 +934,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const value = {
     ...state,
-    login, register, loginWithGoogle, logout,
+    login, register, loginWithGoogle, logout, resetPassword,
     setTheme: (theme: Theme) => updateState({ theme }),
     setLanguage: (language: Language) => updateState({ language }),
     setCurrencyBase: (currencyBase: Currency) => updateState({ currencyBase }),

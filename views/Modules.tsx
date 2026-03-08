@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import { Card, Button, Input, Select, Badge, Money, Toggle, SegmentedControl, Modal, DatePicker } from '../components/UIComponents';
 import { convertToBase, cn, processAICommand, generateId, getTodayStr, dateToISO, isCCPayment } from '../utils';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, CartesianGrid, BarChart, Bar } from 'recharts';
-import { Moon, Sun, Monitor, Globe, Shield, CreditCard as CreditCardIcon, LogOut, User, Activity, TrendingUp, PieChart as PieIcon, Send, Sparkles, Bot, Wallet, Settings, Trash2, Plus, Pencil, ChevronDown, Check, Target, Copy, RefreshCw, Users, ArrowLeft, UserPlus, Crown, Eye, EyeOff, ArrowUpRight, ArrowDownLeft } from 'lucide-react';
+import { Moon, Sun, Monitor, Globe, Shield, CreditCard as CreditCardIcon, LogOut, User, Activity, TrendingUp, PieChart as PieIcon, Send, Sparkles, Bot, Wallet, Settings, Trash2, Plus, Pencil, ChevronDown, Check, Target, Copy, RefreshCw, Users, ArrowLeft, UserPlus, Crown, Eye, EyeOff, ArrowUpRight, ArrowDownLeft, Key, Mail } from 'lucide-react';
 import { AIMessage, CreditCard as CreditCardType, SharedAccount, SharedAccountMember, SharedTransaction, Currency } from '../types';
 
 // --- HISTORY VIEW ---
@@ -2596,7 +2596,7 @@ export const SettingsView = () => {
     theme, setTheme, language, setLanguage, currencyBase, setCurrencyBase,
     timezone, setTimezone,
     privacyMode, togglePrivacy, showCents, toggleShowCents, reduceMotion, toggleReduceMotion,
-    resetData, logout, user, t
+    resetData, logout, user, t, resetPassword
   } = useApp();
 
   const [showResetModal, setShowResetModal] = useState(false);
@@ -2670,6 +2670,64 @@ export const SettingsView = () => {
             <Toggle label={t('set.motion')} checked={reduceMotion} onChange={toggleReduceMotion} />
           </div>
         </div>
+      </Card>
+
+      {/* Security / Password */}
+      <Card>
+        <h3 className="font-bold text-lg mb-6 text-zinc-900 dark:text-white flex items-center gap-2">
+          <Key className="w-5 h-5 text-brand-500" /> {language === 'es' ? 'Seguridad' : 'Security'}
+        </h3>
+        {user?.providerData?.[0]?.providerId === 'google.com' ? (
+          <div className="flex items-center gap-3 p-4 rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800/40">
+            <svg viewBox="0 0 24 24" className="w-5 h-5 shrink-0">
+              <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
+              <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+              <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+              <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+            </svg>
+            <div>
+              <p className="text-sm font-medium text-blue-800 dark:text-blue-300">
+                {language === 'es' ? 'Registrado con Google' : 'Signed in with Google'}
+              </p>
+              <p className="text-xs text-blue-600 dark:text-blue-400 mt-0.5">
+                {language === 'es'
+                  ? 'Tu contraseña se gestiona desde tu cuenta de Google.'
+                  : 'Your password is managed through your Google account.'}
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3 p-4 rounded-xl bg-zinc-50 dark:bg-white/5 border border-zinc-200 dark:border-white/10">
+              <Mail className="w-5 h-5 text-zinc-400 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+                  {language === 'es' ? 'Registrado con email' : 'Signed in with email'}
+                </p>
+                <p className="text-xs text-zinc-500 mt-0.5 truncate">{user?.email}</p>
+              </div>
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  if (user?.email) {
+                    try {
+                      await resetPassword(user.email);
+                    } catch {}
+                  }
+                }}
+                className="shrink-0"
+              >
+                <Key className="w-4 h-4" />
+                {language === 'es' ? 'Cambiar contraseña' : 'Change password'}
+              </Button>
+            </div>
+            <p className="text-xs text-zinc-400 pl-1">
+              {language === 'es'
+                ? 'Se enviará un enlace de recuperación a tu email para cambiar tu contraseña.'
+                : 'A recovery link will be sent to your email to change your password.'}
+            </p>
+          </div>
+        )}
       </Card>
 
       {/* Danger Zone */}

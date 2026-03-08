@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import Anthropic from '@anthropic-ai/sdk';
 import nodemailer from 'nodemailer';
+import admin from 'firebase-admin';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -12,8 +13,14 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000,http://localhost:3001').split(',');
+app.use(cors({
+    origin: (origin, cb) => {
+        if (!origin || allowedOrigins.includes(origin)) cb(null, true);
+        else cb(new Error('Not allowed by CORS'));
+    }
+}));
+app.use(express.json({ limit: '100kb' }));
 
 const anthropic = new Anthropic({
     apiKey: process.env.ANTHROPIC_API_KEY,
@@ -416,6 +423,11 @@ app.post('/api/feedback', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Message is required' });
         }
 
+        const escHtml = (s: string) => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+        const safeName = escHtml(name || 'Anónimo');
+        const safeEmail = email ? escHtml(email) : '';
+        const safeMessage = escHtml(message);
+
         const feedbackEmail = process.env.FEEDBACK_EMAIL;
         const gmailPassword = process.env.GMAIL_APP_PASSWORD;
 
@@ -437,20 +449,24 @@ app.post('/api/feedback', async (req, res) => {
             request: '✨ Solicitud',
         };
 
+        // Validate email format to prevent header injection
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        const validReplyTo = email && emailRegex.test(email) ? email : undefined;
+
         await transporter.sendMail({
             from: feedbackEmail,
             to: feedbackEmail,
-            replyTo: email || undefined,
-            subject: `[UFlow] ${typeLabels[type] || type} — ${name || 'Anónimo'}`,
+            replyTo: validReplyTo,
+            subject: `[UFlow] ${typeLabels[type] || type} — ${safeName}`,
             html: `
                 <div style="font-family:system-ui,sans-serif;max-width:500px;margin:0 auto;padding:20px;">
                     <h2 style="color:#7C5CFF;margin-bottom:4px;">UFlow Feedback</h2>
                     <p style="color:#888;font-size:12px;margin-top:0;">Tipo: ${typeLabels[type] || type}</p>
                     <hr style="border:none;border-top:1px solid #eee;margin:16px 0;" />
-                    <p><strong>De:</strong> ${name || 'Anónimo'}</p>
-                    ${email ? `<p><strong>Email:</strong> <a href="mailto:${email}">${email}</a></p>` : ''}
+                    <p><strong>De:</strong> ${safeName}</p>
+                    ${safeEmail ? `<p><strong>Email:</strong> <a href="mailto:${safeEmail}">${safeEmail}</a></p>` : ''}
                     <p><strong>Mensaje:</strong></p>
-                    <div style="background:#f9f9f9;border-radius:8px;padding:12px;white-space:pre-wrap;">${message}</div>
+                    <div style="background:#f9f9f9;border-radius:8px;padding:12px;white-space:pre-wrap;">${safeMessage}</div>
                     <hr style="border:none;border-top:1px solid #eee;margin:16px 0;" />
                     <p style="color:#aaa;font-size:10px;">Enviado desde UFlow System — ${new Date().toLocaleString('es-CO')}</p>
                 </div>
@@ -460,6 +476,46 @@ app.post('/api/feedback', async (req, res) => {
         res.json({ success: true });
     } catch (error: any) {
         res.status(500).json({ success: false, error: 'Failed to send feedback' });
+    }
+});
+
+// Firebase Admin init (singleton)
+if (!admin.apps.length) {
+    const projectId = process.env.FIREBASE_PROJECT_ID;
+    const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+    const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+    console.log('Firebase Admin config:', { projectId: !!projectId, clientEmail: !!clientEmail, privateKey: !!privateKey });
+    if (projectId && clientEmail && privateKey) {
+        try {
+            admin.initializeApp({
+                credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
+            });
+            console.log('Firebase Admin initialized OK');
+        } catch (e: any) {
+            console.error('Firebase Admin init failed:', e.message);
+        }
+    }
+}
+
+// Check email provider
+app.post('/api/check-email', async (req, res) => {
+    const { email } = req.body || {};
+    if (!email || typeof email !== 'string' || !email.includes('@')) {
+        return res.status(400).json({ error: 'Invalid email' });
+    }
+    if (!admin.apps.length) {
+        return res.status(503).json({ error: 'Firebase Admin not configured' });
+    }
+    try {
+        const user = await admin.auth().getUserByEmail(email);
+        const providers = user.providerData.map(p => p.providerId);
+        return res.json({ exists: true, isGoogle: providers.includes('google.com'), isPassword: providers.includes('password') });
+    } catch (err: any) {
+        console.error('check-email error:', err.code, err.message);
+        if (err.code === 'auth/user-not-found') {
+            return res.json({ exists: false, isGoogle: false, isPassword: false });
+        }
+        return res.status(500).json({ error: 'Server error', detail: err.message });
     }
 });
 

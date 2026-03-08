@@ -1,51 +1,38 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { Button } from '../components/UIComponents';
 import { cn } from '../utils';
-import { Loader2, ArrowRight, ShieldCheck, Mail, Lock, User, Chrome, AlertCircle, Bug } from 'lucide-react';
+import { Loader2, Mail, Lock, AlertCircle, CheckCircle } from 'lucide-react';
 
 export const AuthView: React.FC = () => {
-  const { login, register, loginWithGoogle } = useApp();
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const { login, loginWithGoogle, resetPassword } = useApp();
   const [isLoading, setIsLoading] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
-  
-  // Form State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [confirmPass, setConfirmPass] = useState('');
+  const [showReset, setShowReset] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetSent, setResetSent] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
 
-  // --- VALIDATION LOGIC ---
+  useEffect(() => {
+    document.body.style.overflow = 'auto';
+    return () => { document.body.style.overflow = ''; };
+  }, []);
+
   const isValidEmail = email.includes('@') && email.trim().length > 3;
   const isValidPass = password.length >= 6;
-  
-  // Strict condition to enable button
-  const canSubmit = mode === 'login'
-    ? isValidEmail && isValidPass && !isLoading
-    : isValidEmail && isValidPass && name.trim().length > 0 && password === confirmPass && !isLoading;
+  const canSubmit = isValidEmail && isValidPass && !isLoading;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLocalError(null);
     setIsLoading(true);
-    
     try {
-      if (mode === 'login') {
-        await login(email, password);
-      } else {
-        if (password !== confirmPass) {
-          throw new Error("Passwords do not match"); 
-        }
-        await register(email, password, name);
-      }
+      await login(email, password);
     } catch (error: any) {
-      // Auth error handled below
-      // Strip Firebase prefixes for cleaner UI
-      const msg = error.message?.replace('Firebase: ', '').replace(' (auth/invalid-email).', '') || "Authentication Failed";
+      const msg = error.message?.replace('Firebase: ', '').replace(/\(auth\/.*\)\.?/, '').trim() || 'Error de autenticacion';
       setLocalError(msg);
     } finally {
-      // CRITICAL: Always reset loading state
       setIsLoading(false);
     }
   };
@@ -55,173 +42,182 @@ export const AuthView: React.FC = () => {
     try {
       await loginWithGoogle();
     } catch (error: any) {
-      setLocalError("Google Auth Failed");
+      setLocalError('Error con Google. Intenta de nuevo.');
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setResetError(null);
+    setResetSent(false);
+    try {
+      await resetPassword(resetEmail);
+      setResetSent(true);
+    } catch (error: any) {
+      const msg = error.message?.replace('Firebase: ', '').replace(/\(auth\/.*\)\.?/, '').trim() || 'Error al enviar email';
+      setResetError(msg);
     }
   };
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-[#0B0B12] relative overflow-hidden text-zinc-200 font-sans selection:bg-brand-500/30 selection:text-white">
-      
-      {/* Premium Ambient Background */}
-      <div className="absolute top-[-20%] left-[-10%] w-[800px] h-[800px] bg-brand-900/20 rounded-full blur-[120px] pointer-events-none animate-pulse-slow" />
-      <div className="absolute bottom-[-20%] right-[-10%] w-[600px] h-[600px] bg-brand-800/10 rounded-full blur-[100px] pointer-events-none" />
+    <div className="min-h-screen w-full flex items-center justify-center bg-[#FAFAFA] font-sans selection:bg-brand-500/20">
+      <div className="w-full max-w-sm px-5 py-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
-      {/* Noise Texture */}
-      <div className="absolute inset-0 bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-20 pointer-events-none" />
-      <div className="absolute inset-0 opacity-[0.03]" style={{backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '40px 40px'}} />
-
-      <div className="w-full max-w-md z-10 p-6 animate-in zoom-in-95 fade-in duration-700 flex flex-col items-center">
-        
-        {/* Brand Header */}
-        <div className="text-center mb-10">
-           <div className="flex items-center justify-center gap-3 mb-5">
-              <div className="w-10 h-10 bg-brand-600 rounded-xl rotate-45 shadow-[0_0_30px_rgba(124,92,255,0.6)] flex items-center justify-center border border-white/20">
-                 <div className="w-4 h-4 bg-white rounded-full shadow-inner" />
-              </div>
-           </div>
-           <h1 className="text-5xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-b from-white to-white/50 mb-2 drop-shadow-sm">UFLOW</h1>
-           <p className="text-brand-300 font-mono text-[10px] uppercase tracking-[0.3em] opacity-80">Control Your Financial Flow</p>
+        {/* Logo */}
+        <div className="flex justify-center mb-8">
+          <div className="flex items-center gap-2.5">
+            <img src="/icon.png" alt="uFlow" className="w-9 h-9" />
+            <span className="text-xl font-bold tracking-tight text-zinc-900">uFlow</span>
+          </div>
         </div>
 
-        {/* Glass Card Container */}
-        <div className="w-full bg-white/5 backdrop-blur-3xl border border-white/10 rounded-[32px] p-1 shadow-2xl ring-1 ring-white/5 overflow-hidden">
-          
-          {/* Segmented Control (Tabs) */}
-          <div className="flex p-1.5 bg-black/40 rounded-[28px] rounded-b-xl mb-8 relative">
-            <button 
-              type="button"
-              onClick={() => { setMode('login'); setLocalError(null); }}
-              className={cn(
-                "flex-1 py-3 text-xs font-bold uppercase tracking-widest rounded-2xl transition-all duration-500 ease-out z-10",
-                mode === 'login' ? "text-white" : "text-zinc-500 hover:text-zinc-300"
-              )}
-            >
-              Log In
-            </button>
-            <button 
-              type="button"
-              onClick={() => { setMode('register'); setLocalError(null); }}
-              className={cn(
-                "flex-1 py-3 text-xs font-bold uppercase tracking-widest rounded-2xl transition-all duration-500 ease-out z-10",
-                mode === 'register' ? "text-white" : "text-zinc-500 hover:text-zinc-300"
-              )}
-            >
-              Sign Up
-            </button>
-            
-            {/* Sliding Background Pill */}
-            <div 
-              className={cn(
-                "absolute top-1.5 bottom-1.5 w-[calc(50%-6px)] bg-brand-600 rounded-2xl shadow-[0_4px_20px_-4px_rgba(124,92,255,0.5)] transition-all duration-500 ease-[cubic-bezier(0.4,0,0.2,1)]",
-                mode === 'login' ? "left-1.5" : "left-[calc(50%+3px)]"
-              )} 
-            />
-          </div>
+        {showReset ? (
+          /* ── Reset password view ── */
+          <>
+            <div className="text-center mb-8">
+              <h1 className="text-2xl font-bold text-zinc-900 tracking-tight">Recuperar contrasena</h1>
+              <p className="mt-1.5 text-sm text-zinc-500">Te enviaremos un link para restablecer tu contrasena</p>
+            </div>
 
-          <div className="px-6 pb-8">
-            {/* Error Banner */}
+            {resetSent && (
+              <div className="mb-4 p-3 rounded-xl bg-green-50 border border-green-200 flex items-center gap-2.5 text-xs text-green-700 animate-in slide-in-from-top-2 duration-300">
+                <CheckCircle className="w-4 h-4 shrink-0" />
+                Si existe una cuenta con ese email, recibiras un enlace de recuperacion. Revisa tu bandeja de entrada y spam.
+              </div>
+            )}
+
+            {resetError && (
+              <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 flex items-center gap-2.5 text-xs text-red-600 animate-in slide-in-from-top-2 duration-300">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                {resetError}
+              </div>
+            )}
+
+            <form onSubmit={handleResetPassword} className="space-y-3">
+              <div className="relative group">
+                <Mail className="absolute left-3.5 top-3 w-4 h-4 text-zinc-400 group-focus-within:text-brand-500 transition-colors" />
+                <input
+                  type="email"
+                  placeholder="Email de tu cuenta"
+                  required
+                  value={resetEmail}
+                  onChange={e => setResetEmail(e.target.value)}
+                  className="w-full h-11 pl-10 pr-4 bg-white border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={!resetEmail.includes('@')}
+                className={cn(
+                  "w-full h-11 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-brand-600 to-brand-500 shadow-neon-sm hover:shadow-neon transition-all hover:brightness-110 active:scale-[0.98]",
+                  !resetEmail.includes('@') && "opacity-40 cursor-not-allowed shadow-none"
+                )}
+              >
+                Enviar link de recuperacion
+              </button>
+            </form>
+
+            <button
+              onClick={() => { setShowReset(false); setResetSent(false); setResetError(null); }}
+              className="mt-4 w-full text-center text-sm text-zinc-500 hover:text-brand-600 font-medium transition-colors"
+            >
+              Volver al login
+            </button>
+          </>
+        ) : (
+          /* ── Login view ── */
+          <>
+            <div className="text-center mb-8">
+              <h1 className="text-2xl font-bold text-zinc-900 tracking-tight">Bienvenido de vuelta</h1>
+              <p className="mt-1.5 text-sm text-zinc-500">Inicia sesion para acceder a tu cuenta</p>
+            </div>
+
+            {/* Google button */}
+            <button
+              onClick={handleGoogleLogin}
+              disabled={isLoading}
+              type="button"
+              className="w-full flex items-center justify-center gap-2.5 h-11 rounded-xl bg-white border border-zinc-200 text-sm font-medium text-zinc-700 hover:bg-zinc-50 hover:border-zinc-300 transition-all active:scale-[0.98] shadow-sm disabled:opacity-50"
+            >
+              <svg viewBox="0 0 24 24" style={{ width: 18, height: 18 }}>
+                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4" />
+                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+              </svg>
+              Continuar con Google
+            </button>
+
+            {/* Divider */}
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-zinc-200" /></div>
+              <div className="relative flex justify-center text-xs"><span className="bg-[#FAFAFA] px-3 text-zinc-400">o con email</span></div>
+            </div>
+
+            {/* Error */}
             {localError && (
-              <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center gap-3 text-xs text-red-200 animate-in slide-in-from-top-2">
-                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+              <div className="mb-4 p-3 rounded-xl bg-red-50 border border-red-200 flex items-center gap-2.5 text-xs text-red-600 animate-in slide-in-from-top-2 duration-300">
+                <AlertCircle className="w-4 h-4 shrink-0" />
                 {localError}
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              
-              {mode === 'register' && (
-                <div className="space-y-1 animate-in slide-in-from-left fade-in duration-500">
-                   <div className="relative group">
-                     <User className="absolute left-4 top-3.5 w-5 h-5 text-zinc-500 group-focus-within:text-brand-400 transition-colors" />
-                     <input
-                       type="text"
-                       placeholder="Full Name"
-                       required
-                       value={name}
-                       onChange={e => setName(e.target.value)}
-                       className="w-full h-12 pl-12 pr-4 bg-black/20 border border-white/5 rounded-2xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-brand-500/50 focus:ring-1 focus:ring-brand-500/50 focus:bg-black/40 transition-all shadow-inner"
-                     />
-                   </div>
-                </div>
-              )}
-
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="space-y-3">
               <div className="relative group">
-                 <Mail className={cn("absolute left-4 top-3.5 w-5 h-5 transition-colors", isValidEmail ? "text-green-500" : "text-zinc-500 group-focus-within:text-brand-400")} />
-                 <input
-                   type="email"
-                   placeholder="Email Address"
-                   required
-                   value={email}
-                   onChange={e => setEmail(e.target.value)}
-                   className="w-full h-12 pl-12 pr-4 bg-black/20 border border-white/5 rounded-2xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-brand-500/50 focus:ring-1 focus:ring-brand-500/50 focus:bg-black/40 transition-all shadow-inner"
-                 />
+                <Mail className={cn("absolute left-3.5 top-3 w-4 h-4 transition-colors", isValidEmail ? "text-brand-500" : "text-zinc-400 group-focus-within:text-brand-500")} />
+                <input
+                  type="email"
+                  placeholder="Email"
+                  required
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  className="w-full h-11 pl-10 pr-4 bg-white border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all"
+                />
               </div>
 
               <div className="relative group">
-                 <Lock className={cn("absolute left-4 top-3.5 w-5 h-5 transition-colors", isValidPass ? "text-green-500" : "text-zinc-500 group-focus-within:text-brand-400")} />
-                 <input
-                   type="password"
-                   placeholder="Password (min 6 chars)"
-                   required
-                   value={password}
-                   onChange={e => setPassword(e.target.value)}
-                   className="w-full h-12 pl-12 pr-4 bg-black/20 border border-white/5 rounded-2xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-brand-500/50 focus:ring-1 focus:ring-brand-500/50 focus:bg-black/40 transition-all shadow-inner"
-                 />
+                <Lock className={cn("absolute left-3.5 top-3 w-4 h-4 transition-colors", isValidPass ? "text-brand-500" : "text-zinc-400 group-focus-within:text-brand-500")} />
+                <input
+                  type="password"
+                  placeholder="Contrasena"
+                  required
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  className="w-full h-11 pl-10 pr-4 bg-white border border-zinc-200 rounded-xl text-sm text-zinc-900 placeholder-zinc-400 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-500/20 transition-all"
+                />
               </div>
 
-              {mode === 'register' && (
-                <div className="relative group animate-in slide-in-from-left fade-in duration-500">
-                   <ShieldCheck className={cn("absolute left-4 top-3.5 w-5 h-5 transition-colors", (password === confirmPass && confirmPass.length >= 6) ? "text-green-500" : "text-zinc-500 group-focus-within:text-brand-400")} />
-                   <input
-                     type="password"
-                     placeholder="Confirm Password"
-                     required
-                     value={confirmPass}
-                     onChange={e => setConfirmPass(e.target.value)}
-                     className="w-full h-12 pl-12 pr-4 bg-black/20 border border-white/5 rounded-2xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-brand-500/50 focus:ring-1 focus:ring-brand-500/50 focus:bg-black/40 transition-all shadow-inner"
-                   />
-                </div>
-              )}
+              {/* Forgot password */}
+              <div className="text-right">
+                <button
+                  type="button"
+                  onClick={() => { setShowReset(true); setResetEmail(email); }}
+                  className="text-xs text-zinc-400 hover:text-brand-500 font-medium transition-colors"
+                >
+                  Olvidaste tu contrasena?
+                </button>
+              </div>
 
-              <Button 
-                variant="primary" 
+              <button
                 type="submit"
-                className={cn(
-                  "w-full mt-6 h-12 text-sm bg-gradient-to-r from-brand-600 to-brand-500 border-none shadow-[0_0_25px_-5px_rgba(124,92,255,0.6)] rounded-2xl transition-all duration-300",
-                  !canSubmit && "opacity-50 cursor-not-allowed shadow-none grayscale"
-                )} 
                 disabled={!canSubmit}
-              >
-                {isLoading ? <Loader2 className="animate-spin w-5 h-5" /> : (
-                  <>
-                    {mode === 'login' ? 'Authenticate' : 'Initialize System'}
-                    <ArrowRight className="w-4 h-4 ml-2" />
-                  </>
+                className={cn(
+                  "w-full h-11 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-brand-600 to-brand-500 shadow-neon-sm hover:shadow-neon transition-all hover:brightness-110 active:scale-[0.98]",
+                  !canSubmit && "opacity-40 cursor-not-allowed shadow-none"
                 )}
-              </Button>
+              >
+                {isLoading ? <Loader2 className="animate-spin w-4 h-4 mx-auto" /> : 'Iniciar sesion'}
+              </button>
             </form>
-            
-            <div className="relative my-8">
-               <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10"></div></div>
-               <div className="relative flex justify-center text-[10px] uppercase font-bold tracking-wider"><span className="bg-[#12121a] px-3 text-zinc-600">Secure Link</span></div>
-            </div>
 
-            <Button 
-               variant="secondary" 
-               className="w-full bg-white text-zinc-900 hover:bg-zinc-200 border-none font-bold h-12 rounded-2xl"
-               onClick={handleGoogleLogin}
-               type="button"
-               disabled={isLoading}
-            >
-              <Chrome className="w-5 h-5 mr-2" />
-              Continue with Google
-            </Button>
-          </div>
-        </div>
-        
-        <div className="text-center mt-8 text-[10px] text-zinc-600 font-mono tracking-wide">
-           ENCRYPTED CONNECTION • SYSTEM V2.4
-        </div>
+            {/* Beta notice */}
+            <p className="mt-6 text-center text-[11px] text-zinc-400 leading-relaxed">
+              Acceso limitado durante beta privado.
+            </p>
+          </>
+        )}
       </div>
     </div>
   );
