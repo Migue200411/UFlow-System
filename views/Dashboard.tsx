@@ -104,7 +104,7 @@ export const DashboardView: React.FC = () => {
     const debtLiabilities = debts
       .filter(d => d.type === 'i_owe' && d.status !== 'paid')
       .reduce((acc, d) => {
-          const paid = d.payments.reduce((s, p) => s + p.amount, 0);
+          const paid = (d.payments || []).reduce((s, p) => s + p.amount, 0);
           const remaining = d.totalAmount - paid;
           return acc + convertToBase(remaining, d.currency, currencyBase);
       }, 0);
@@ -119,7 +119,7 @@ export const DashboardView: React.FC = () => {
     const totalReceivables = debts
       .filter(d => d.type === 'owes_me' && d.status !== 'paid')
       .reduce((acc, d) => {
-          const paid = d.payments.reduce((s, p) => s + p.amount, 0);
+          const paid = (d.payments || []).reduce((s, p) => s + p.amount, 0);
           const remaining = d.totalAmount - paid;
           return acc + convertToBase(remaining, d.currency, currencyBase);
       }, 0);

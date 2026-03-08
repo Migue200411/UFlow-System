@@ -1968,7 +1968,7 @@ export const DebtsView = () => {
     });
   };
 
-  const getPaidAmount = (debt: typeof debts[0]) => debt.payments.reduce((acc, p) => acc + p.amount, 0);
+  const getPaidAmount = (debt: typeof debts[0]) => (debt.payments || []).reduce((acc, p) => acc + p.amount, 0);
   const getRemaining = (debt: typeof debts[0]) => debt.totalAmount - getPaidAmount(debt);
 
   return (
