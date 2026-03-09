@@ -5,7 +5,7 @@ const Section: React.FC<{ children: React.ReactNode; className?: string; id?: st
   <section id={id} className={`px-5 sm:px-8 lg:px-12 py-20 sm:py-28 ${className}`}>{children}</section>
 );
 const Container: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = '' }) => (
-  <div className={`max-w-6xl mx-auto ${className}`}>{children}</div>
+  <div className={`max-w-6xl mx-auto px-5 sm:px-8 ${className}`}>{children}</div>
 );
 const Badge: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-brand-500/10 text-brand-600 border border-brand-500/20 backdrop-blur-sm">
@@ -346,45 +346,49 @@ export const LandingPage: React.FC<{ onGoToApp: () => void }> = ({ onGoToApp }) 
               <p className="mt-3 text-xs text-zinc-400">Gratis. Sin spam. Te avisamos cuando este listo.</p>
             </Reveal>
 
-            {/* Hero mockup / phone frame */}
-            <Reveal delay={400}>
-              <div className="mt-14 relative">
-                {/* Glow behind */}
-                <div className="absolute inset-0 bg-gradient-to-t from-brand-500/10 to-transparent rounded-3xl blur-2xl -z-10 scale-95" />
-                <div className="bg-white dark:bg-dark-surface rounded-2xl sm:rounded-3xl border border-zinc-200/80 dark:border-white/10 shadow-premium overflow-hidden">
-                  {/* Browser bar */}
-                  <div className="flex items-center gap-2 px-4 py-3 bg-zinc-50 dark:bg-white/5 border-b border-zinc-200/50 dark:border-white/5">
-                    <div className="flex gap-1.5">
-                      <div className="w-3 h-3 rounded-full bg-red-400" />
-                      <div className="w-3 h-3 rounded-full bg-yellow-400" />
-                      <div className="w-3 h-3 rounded-full bg-green-400" />
-                    </div>
-                    <div className="flex-1 ml-3">
-                      <div className="max-w-xs mx-auto px-3 py-1 bg-white dark:bg-white/10 rounded-md text-[10px] text-zinc-400 font-mono text-center">app.uflow.com</div>
-                    </div>
-                  </div>
-                  {/* App screenshot placeholder */}
-                  <div className="aspect-[16/9] bg-gradient-to-br from-brand-50 via-white to-fuchsia-50 dark:from-dark-bg dark:via-dark-surface dark:to-brand-950 flex items-center justify-center relative">
-                    <div className="text-center">
-                      <div className="w-16 h-16 mx-auto bg-brand-500/10 rounded-2xl flex items-center justify-center mb-4">
-                        <img src="/icon.png" alt="uFlow" className="w-10 h-10" />
-                      </div>
-                      <p className="text-sm text-zinc-400 font-medium">Vista previa del dashboard</p>
-                      <p className="text-xs text-zinc-300 mt-1">Proximamente</p>
-                    </div>
-                    {/* Decorative floating cards */}
-                    <div className="absolute top-8 right-8 px-4 py-3 bg-white dark:bg-white/10 rounded-xl shadow-lg border border-zinc-200/50 dark:border-white/10 hidden sm:block animate-float">
-                      <p className="text-[10px] text-zinc-400 font-mono">BALANCE</p>
-                      <p className="text-lg font-bold text-green-600 font-mono">+$2,450,000</p>
-                    </div>
-                    <div className="absolute bottom-8 left-8 px-4 py-3 bg-white dark:bg-white/10 rounded-xl shadow-lg border border-zinc-200/50 dark:border-white/10 hidden sm:block animate-float" style={{ animationDelay: '2s' }}>
-                      <p className="text-[10px] text-zinc-400 font-mono">AI</p>
-                      <p className="text-xs text-zinc-600 dark:text-zinc-300">"Registre 50k en transporte"</p>
-                    </div>
-                  </div>
+            {/* ═══════════════ VIDEO DEMO ═══════════════ */}
+            <Section id="demo" className="bg-zinc-50/80 dark:bg-white/[0.02]">
+              <Container>
+                <div className="text-center max-w-2xl mx-auto mb-12">
+                  <Reveal>
+                    <Badge>Demo</Badge>
+                  </Reveal>
+                  <Reveal delay={100}>
+                    <h2 className="mt-4 text-3xl sm:text-4xl font-bold tracking-tight">Mira uFlow en accion</h2>
+                  </Reveal>
+                  <Reveal delay={200}>
+                    <p className="mt-4 text-zinc-500">Un recorrido rapido por las funcionalidades principales de la app.</p>
+                  </Reveal>
                 </div>
-              </div>
-            </Reveal>
+
+                <Reveal delay={300}>
+                  <div className="relative max-w-4xl mx-auto">
+                    <div className="absolute inset-0 bg-gradient-to-t from-brand-500/10 to-fuchsia-500/5 rounded-3xl blur-2xl -z-10 scale-95" />
+                    <div className="bg-white dark:bg-dark-surface rounded-2xl sm:rounded-3xl border border-zinc-200/60 dark:border-white/10 shadow-premium overflow-hidden">
+                      {/* Browser bar */}
+                      <div className="flex items-center gap-2 px-4 py-3 bg-zinc-50 dark:bg-white/5 border-b border-zinc-200/50 dark:border-white/5">
+                        <div className="flex gap-1.5">
+                          <div className="w-3 h-3 rounded-full bg-red-400" />
+                          <div className="w-3 h-3 rounded-full bg-yellow-400" />
+                          <div className="w-3 h-3 rounded-full bg-green-400" />
+                        </div>
+                        <div className="flex-1 ml-3">
+                          <div className="max-w-xs mx-auto px-3 py-1 bg-white dark:bg-white/10 rounded-md text-[10px] text-zinc-400 font-mono text-center">app.uflow.com</div>
+                        </div>
+                      </div>
+                      <video
+                        src="/video.mp4"
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="w-full h-auto block"
+                      />
+                    </div>
+                  </div>
+                </Reveal>
+              </Container>
+            </Section>
           </div>
         </Container>
       </Section>
@@ -511,40 +515,25 @@ export const LandingPage: React.FC<{ onGoToApp: () => void }> = ({ onGoToApp }) 
         </Container>
       </Section>
 
-      {/* ═══════════════ VIDEO DEMO ═══════════════ */}
-      <Section id="demo" className="bg-zinc-50/80 dark:bg-white/[0.02]">
-        <Container>
-          <div className="text-center max-w-2xl mx-auto mb-12">
-            <Reveal>
-              <Badge>Demo</Badge>
-            </Reveal>
-            <Reveal delay={100}>
-              <h2 className="mt-4 text-3xl sm:text-4xl font-bold tracking-tight">Mira uFlow en accion</h2>
-            </Reveal>
-            <Reveal delay={200}>
-              <p className="mt-4 text-zinc-500">Un recorrido rapido por las funcionalidades principales de la app.</p>
-            </Reveal>
-          </div>
-
-          <Reveal delay={300}>
-            <div className="relative max-w-4xl mx-auto">
-              <div className="absolute inset-0 bg-gradient-to-t from-brand-500/10 to-fuchsia-500/5 rounded-3xl blur-2xl -z-10 scale-95" />
-              <div className="aspect-video bg-white dark:bg-dark-surface rounded-2xl sm:rounded-3xl border border-zinc-200/60 dark:border-white/10 shadow-premium flex items-center justify-center overflow-hidden">
-                {/* Video placeholder — replace src with actual video */}
-                <div className="text-center">
-                  <div className="w-20 h-20 mx-auto rounded-full bg-brand-500/10 flex items-center justify-center mb-4 group cursor-pointer hover:bg-brand-500/20 transition-colors">
-                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-8 h-8 text-brand-500 ml-1">
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
+      {/* Hero mockup / dashboard screenshot */}
+            <Reveal delay={400}>
+              <div className="mt-14 relative">
+                <div className="absolute inset-0 bg-gradient-to-t from-brand-500/10 to-transparent rounded-3xl blur-2xl -z-10 scale-95" />
+                <div className="bg-white dark:bg-dark-surface rounded-2xl sm:rounded-3xl border border-zinc-200/80 dark:border-white/10 shadow-premium overflow-hidden">
+                  <div className="flex items-center gap-2 px-4 py-3 bg-zinc-50 dark:bg-white/5 border-b border-zinc-200/50 dark:border-white/5">
+                    <div className="flex gap-1.5">
+                      <div className="w-3 h-3 rounded-full bg-red-400" />
+                      <div className="w-3 h-3 rounded-full bg-yellow-400" />
+                      <div className="w-3 h-3 rounded-full bg-green-400" />
+                    </div>
+                    <div className="flex-1 ml-3">
+                      <div className="max-w-xs mx-auto px-3 py-1 bg-white dark:bg-white/10 rounded-md text-[10px] text-zinc-400 font-mono text-center">app.uflow.com</div>
+                    </div>
                   </div>
-                  <p className="text-sm text-zinc-400 font-medium">Video proximamente</p>
-                  <p className="text-xs text-zinc-300 dark:text-zinc-600 mt-1">Estamos grabando algo increible</p>
+                  <img src="/dashboard.png" alt="uFlow Dashboard" className="w-full h-auto block" />
                 </div>
               </div>
-            </div>
-          </Reveal>
-        </Container>
-      </Section>
+            </Reveal>
 
       {/* ═══════════════ STATS ═══════════════ */}
       <Section>

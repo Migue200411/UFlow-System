@@ -417,7 +417,7 @@ export const DashboardView: React.FC = () => {
         </Card>
 
         {/* Feedback */}
-        <Card className={cn("overflow-hidden transition-all duration-300", !reduceMotion && 'animate-in fade-in slide-in-from-bottom-8 duration-700 delay-[1200ms]')}>
+        <Card className={cn("!p-3 self-start overflow-hidden transition-all duration-300", !reduceMotion && 'animate-in fade-in slide-in-from-bottom-8 duration-700 delay-[1200ms]')}>
           <button
             onClick={() => setFeedbackOpen(!feedbackOpen)}
             className="w-full flex items-center justify-between group"
