@@ -277,7 +277,7 @@ export const LandingPage: React.FC<{ onGoToApp: () => void }> = ({ onGoToApp }) 
     <div className="min-h-screen bg-[#FAFAFA] dark:bg-dark-bg text-zinc-900 dark:text-white font-sans overflow-x-hidden selection:bg-brand-500/20 selection:text-brand-700">
 
       {/* ═══════════════ NAVBAR ═══════════════ */}
-      <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'bg-white/80 dark:bg-dark-bg/80 backdrop-blur-xl shadow-sm border-b border-zinc-200/50 dark:border-white/5' : ''}`}>
+      <nav aria-label="Navegacion principal" className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${scrolled ? 'bg-white/80 dark:bg-dark-bg/80 backdrop-blur-xl shadow-sm border-b border-zinc-200/50 dark:border-white/5' : ''}`}>
         <Container className="flex items-center justify-between h-16 sm:h-20">
           <div className="flex items-center gap-2">
             <img src="/icon.png" alt="uFlow" className="w-8 h-8 sm:w-9 sm:h-9" />
